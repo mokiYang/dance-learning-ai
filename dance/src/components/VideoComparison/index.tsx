@@ -134,21 +134,17 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
 
       <div className="video-container">
         <div className="video-panel">
-          <div className="video-label">参考视频</div>
           <video
             ref={referenceVideoRef}
             src={apiService.getPoseVideoUrl(workId, 'reference')}
-            controls
             className="comparison-video"
           />
         </div>
         
         <div className="video-panel">
-          <div className="video-label">用户视频</div>
           <video
             ref={userVideoRef}
             src={apiService.getPoseVideoUrl(workId, 'user')}
-            controls
             className="comparison-video"
           />
         </div>
@@ -208,38 +204,38 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       </div>
 
       <div className="comparison-stats">
-        <div className="stat-item">
-          <span>总帧数:</span>
-          <span>{frameData.frame_comparisons.length}</span>
-        </div>
-        <div className="stat-item">
-          <span>有效对比帧数:</span>
-          <span>{frameData.frame_comparisons.filter(f => f.has_pose_data).length}</span>
-        </div>
-        <div className="stat-item">
-          <span>差异帧数:</span>
-          <span>{frameData.frame_comparisons.filter(f => f.has_difference).length}</span>
-        </div>
-        <div className="stat-item">
-          <span>同步率:</span>
-          <span>
-            {(() => {
-              const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data);
-              if (validFrames.length === 0) return '0%';
-              const syncFrames = validFrames.filter(f => !f.has_difference).length;
-              return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
-            })()}
-          </span>
-        </div>
-        <div className="stat-item">
-          <span>对比时长:</span>
-          <span>
-            {frameData.frame_comparisons.length > 0 
-              ? `${Math.max(...frameData.frame_comparisons.map(f => f.timestamp)).toFixed(1)}秒`
-              : '0秒'
-            }
-          </span>
-        </div>
+        <table className="stats-table">
+          <tbody>
+            <tr>
+              <td className="stat-label">总帧数:</td>
+              <td className="stat-value">{frameData.frame_comparisons.length}</td>
+              <td className="stat-label">有效对比帧数:</td>
+              <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_pose_data).length}</td>
+              <td className="stat-label">差异帧数:</td>
+              <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_difference).length}</td>
+            </tr>
+            <tr>
+              <td className="stat-label">同步率:</td>
+              <td className="stat-value">
+                {(() => {
+                  const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data);
+                  if (validFrames.length === 0) return '0%';
+                  const syncFrames = validFrames.filter(f => !f.has_difference).length;
+                  return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
+                })()}
+              </td>
+              <td className="stat-label">对比时长:</td>
+              <td className="stat-value">
+                {frameData.frame_comparisons.length > 0 
+                  ? `${Math.max(...frameData.frame_comparisons.map(f => f.timestamp)).toFixed(1)}秒`
+                  : '0秒'
+                }
+              </td>
+              <td className="stat-label">差异阈值:</td>
+              <td className="stat-value">{frameData.threshold}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

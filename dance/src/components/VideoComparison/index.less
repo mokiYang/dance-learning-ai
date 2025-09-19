@@ -57,7 +57,7 @@
 
   .video-container {
     display: flex;
-    flex: 1;
+    height: 66.67vh; // 占屏幕高度的2/3
     gap: 16px;
     padding: 16px;
     min-height: 0;
@@ -70,27 +70,46 @@
       border-radius: 8px;
       overflow: hidden;
 
-      .video-label {
-        padding: 8px 16px;
-        background: #222;
-        font-size: 14px;
-        font-weight: 500;
-        text-align: center;
-        border-bottom: 1px solid #333;
-      }
-
       .comparison-video {
         flex: 1;
         width: 100%;
         height: 100%;
         object-fit: contain;
         background: #000;
+        // 隐藏默认控制条
+        &::-webkit-media-controls {
+          display: none !important;
+        }
+        &::-webkit-media-controls-panel {
+          display: none !important;
+        }
+        &::-webkit-media-controls-play-button {
+          display: none !important;
+        }
+        &::-webkit-media-controls-timeline {
+          display: none !important;
+        }
+        &::-webkit-media-controls-current-time-display {
+          display: none !important;
+        }
+        &::-webkit-media-controls-time-remaining-display {
+          display: none !important;
+        }
+        &::-webkit-media-controls-mute-button {
+          display: none !important;
+        }
+        &::-webkit-media-controls-volume-slider {
+          display: none !important;
+        }
+        &::-webkit-media-controls-fullscreen-button {
+          display: none !important;
+        }
       }
     }
   }
 
   .controls {
-    padding: 16px 24px;
+    padding: 8px 24px;
     background: rgba(0, 0, 0, 0.8);
     border-top: 1px solid #333;
 
@@ -146,7 +165,7 @@
   }
 
   .timeline-container {
-    padding: 16px 24px;
+    padding: 8px 24px;
     background: rgba(0, 0, 0, 0.9);
     border-top: 1px solid #333;
 
@@ -154,8 +173,8 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
-      font-size: 14px;
+      margin-bottom: 8px;
+      font-size: 12px;
       color: #ccc;
     }
 
@@ -163,13 +182,13 @@
       display: flex;
       gap: 4px;
       overflow-x: auto;
-      padding: 8px 0;
-      max-height: 120px;
+      padding: 4px 0;
+      max-height: 80px;
 
       .timeline-frame {
         flex-shrink: 0;
-        width: 60px;
-        height: 80px;
+        width: 50px;
+        height: 60px;
         background: #222;
         border: 2px solid #333;
         border-radius: 6px;
@@ -242,27 +261,44 @@
   }
 
   .comparison-stats {
-    display: flex;
-    justify-content: space-around;
-    padding: 16px 24px;
+    padding: 8px 24px;
     background: rgba(0, 0, 0, 0.8);
     border-top: 1px solid #333;
 
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
 
-      span:first-child {
-        font-size: 12px;
-        color: #ccc;
+      tr {
+        border-bottom: 1px solid #333;
+        
+        &:last-child {
+          border-bottom: none;
+        }
       }
 
-      span:last-child {
-        font-size: 16px;
-        font-weight: 600;
+      td {
+        padding: 4px 8px;
+        text-align: center;
+        border-right: 1px solid #333;
+        
+        &:last-child {
+          border-right: none;
+        }
+      }
+
+      .stat-label {
+        color: #ccc;
+        font-size: 10px;
+        width: 80px;
+      }
+
+      .stat-value {
         color: #2ed573;
+        font-weight: 600;
+        font-size: 12px;
+        width: 60px;
       }
     }
   }

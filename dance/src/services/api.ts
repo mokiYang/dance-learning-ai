@@ -106,11 +106,6 @@ export interface UploadResult {
   warning?: string;
 }
 
-export interface ReportResult {
-  success: boolean;
-  work_id: string;
-  report: string;
-}
 
 // API服务类
 class ApiService {
@@ -143,10 +138,6 @@ class ApiService {
     }
   }
 
-  // 健康检查
-  async healthCheck(): Promise<{ status: string; timestamp: string; message: string }> {
-    return this.makeRequest(`${this.baseUrl}/health`);
-  }
 
   // 上传参考视频
   async uploadReferenceVideo(
@@ -196,22 +187,6 @@ class ApiService {
     });
   }
 
-  // 比较视频
-  async compareVideos(
-    referenceVideo: File,
-    userVideo: File,
-    threshold: number = 0.3
-  ): Promise<ComparisonResult> {
-    const formData = new FormData();
-    formData.append('reference_video', referenceVideo);
-    formData.append('user_video', userVideo);
-    formData.append('threshold', threshold.toString());
-
-    return this.makeRequest(`${this.baseUrl}/compare-videos`, {
-      method: 'POST',
-      body: formData,
-    });
-  }
 
   // 使用已上传的用户视频进行比较
   async compareWithUploadedVideo(
@@ -237,10 +212,6 @@ class ApiService {
     });
   }
 
-  // 获取分析报告
-  async getReport(workId: string): Promise<ReportResult> {
-    return this.makeRequest(`${this.baseUrl}/get-report/${workId}`);
-  }
 
   // 获取逐帧对比数据
   async getFrameComparison(workId: string): Promise<FrameComparisonResult> {

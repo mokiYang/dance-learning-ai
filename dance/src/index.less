@@ -24,6 +24,7 @@ code {
   padding: 20px;
 }
 
+// 通用按钮样式
 .btn {
   padding: 10px 20px;
   border: none;
@@ -31,40 +32,134 @@ code {
   cursor: pointer;
   font-size: 16px;
   transition: all 0.3s ease;
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 }
 
 .btn-primary {
   background-color: #007bff;
   color: white;
+  
+  &:hover:not(:disabled) {
+    background-color: #0056b3;
+  }
 }
 
-.btn-primary:hover {
-  background-color: #0056b3;
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  
+  &:hover:not(:disabled) {
+    background-color: #545b62;
+  }
 }
 
 .btn-success {
   background-color: #28a745;
   color: white;
-}
-
-.btn-success:hover {
-  background-color: #1e7e34;
+  
+  &:hover:not(:disabled) {
+    background-color: #1e7e34;
+  }
 }
 
 .btn-danger {
   background-color: #dc3545;
   color: white;
-}
-
-.btn-danger:hover {
-  background-color: #c82333;
+  
+  &:hover:not(:disabled) {
+    background-color: #c82333;
+  }
 }
 
 .btn-warning {
   background-color: #ffc107;
   color: #212529;
+  
+  &:hover:not(:disabled) {
+    background-color: #e0a800;
+  }
 }
 
-.btn-warning:hover {
-  background-color: #e0a800;
+.btn-outline {
+  background: transparent;
+  color: #007bff;
+  border: 2px solid #007bff;
+  
+  &:hover:not(:disabled) {
+    background: #007bff;
+    color: white;
+  }
+}
+
+// 通用加载动画
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+@keyframes countdownPulse {
+  0% { 
+    opacity: 0.8; 
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 1; 
+    transform: scale(1.1);
+  }
+  100% { 
+    opacity: 0.8; 
+    transform: scale(1);
+  }
+}
+
+// 通用加载样式
+.loading-container,
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+}
+
+.loading-spinner {
+  font-size: 18px;
+  color: #007bff;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  &::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e3f2fd;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+}
+
+.error-message {
+  font-size: 18px;
+  color: #dc3545;
+  margin-bottom: 20px;
 } 
