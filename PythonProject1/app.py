@@ -115,6 +115,23 @@ def generate_pose_video(video_file, output_file, n=5):
     import tempfile
     import os
     
+    # 使用相同的13个关键点
+    selected_landmarks = [
+        0,  # 鼻子 - 头部位置
+        11,  # 左肩 - 上半身姿态
+        12,  # 右肩 - 上半身姿态
+        13,  # 左肘 - 手臂动作
+        14,  # 右肘 - 手臂动作
+        15,  # 左手腕 - 手部位置
+        16,  # 右手腕 - 手部位置
+        23,  # 左髋 - 下半身姿态
+        24,  # 右髋 - 下半身姿态
+        25,  # 左膝 - 腿部动作
+        26,  # 右膝 - 腿部动作
+        27,  # 左脚踝 - 脚部位置
+        28  # 右脚踝 - 脚部位置
+    ]
+    
     mp_pose = mp.solutions.pose
     mp_drawing = mp.solutions.drawing_utils
     
@@ -144,10 +161,28 @@ def generate_pose_video(video_file, output_file, n=5):
                 results = pose.process(image_rgb)
                 
                 if results.pose_landmarks:
-                    # 绘制骨骼
+                    # 创建只包含选定关键点的landmarks对象
+                    filtered_landmarks = []
+                    for i, landmark in enumerate(results.pose_landmarks.landmark):
+                        if i in selected_landmarks:
+                            filtered_landmarks.append(landmark)
+                        else:
+                            # 对于不在选定列表中的点，创建不可见的点
+                            invisible_landmark = type(landmark)()
+                            invisible_landmark.x = 0
+                            invisible_landmark.y = 0
+                            invisible_landmark.z = 0
+                            invisible_landmark.visibility = 0
+                            filtered_landmarks.append(invisible_landmark)
+                    
+                    # 创建新的pose_landmarks对象
+                    filtered_pose_landmarks = type(results.pose_landmarks)()
+                    filtered_pose_landmarks.landmark.extend(filtered_landmarks)
+                    
+                    # 绘制骨骼连线（只显示选定关键点之间的连接）
                     mp_drawing.draw_landmarks(
                         frame, 
-                        results.pose_landmarks, 
+                        filtered_pose_landmarks, 
                         mp_pose.POSE_CONNECTIONS,
                         landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
                         connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2)
@@ -269,8 +304,8 @@ def calculate_pose_difference(pose1, pose2):
     valid_points = 0
 
     for i in range(len(pose1)):
-        # 只比较可见性较高的点
-        if pose1[i][3] > 0.5 and pose2[i][3] > 0.5:
+        # 提高可见性阈值，确保只比较高质量的关键点
+        if pose1[i][3] > 0.7 and pose2[i][3] > 0.7:
             # 计算3D距离
             diff = np.sqrt(
                 (pose1[i][0] - pose2[i][0]) ** 2 +
@@ -280,12 +315,16 @@ def calculate_pose_difference(pose1, pose2):
             total_diff += diff
             valid_points += 1
 
+    # 如果有效点太少，认为骨骼提取质量差
+    if valid_points < len(pose1) * 0.6:  # 至少需要60%的关键点可见
+        return float('inf')
+
     if valid_points == 0:
         return float('inf')
 
     return total_diff / valid_points
 
-def compare_poses(reference_poses, recorded_poses, threshold=0.3):
+def compare_poses(reference_poses, recorded_poses, threshold=0.2):
     """比较两个视频的姿势，找出差异较大的帧"""
     differences = []
 
@@ -431,7 +470,7 @@ def compare_uploaded_videos():
     try:
         user_video_id = request.form.get('user_video_id')
         reference_video_id = request.form.get('reference_video_id')
-        threshold = float(request.form.get('threshold', 0.3))
+        threshold = float(request.form.get('threshold', 0.2))
 
         if not user_video_id or not reference_video_id:
             return jsonify({
@@ -790,7 +829,7 @@ def compare_videos():
 
             # 比较姿势差异
             print("正在比较姿势差异...")
-            threshold = float(request.form.get('threshold', 0.3))
+            threshold = float(request.form.get('threshold', 0.2))
             differences = compare_poses(reference_poses, recorded_poses, threshold)
 
             # 生成报告
@@ -1339,16 +1378,27 @@ def get_frame_comparison(work_id):
             # 使用参考视频的FPS来计算时间戳，因为时间轴以参考视频为准
             timestamp = ref_frame_idx / ref_fps
             
-            # 判断是否有骨骼数据
+            # 判断骨骼数据状态
             has_pose_data = ref_pose is not None and user_pose is not None
             has_difference = False
+            pose_quality_issue = False
             
             if has_pose_data:
-                # 有骨骼数据时，正常比较差异
-                has_difference = bool(pose_diff > comparison_record['threshold'])
+                # 有骨骼数据时，检查质量
+                if pose_diff == float('inf'):
+                    # 骨骼提取质量差（有效点太少）
+                    pose_quality_issue = True
+                    has_difference = True  # 标记为有差异
+                elif pose_diff > comparison_record['threshold']:
+                    # 差异过大
+                    has_difference = True
+                else:
+                    # 正常差异
+                    has_difference = False
             else:
                 # 无骨骼数据时，标记为无法比较
                 pose_diff = -1
+                has_difference = True  # 标记为有差异（因为无法比较）
             
             frame_comparisons.append({
                 'frame_index': i,
@@ -1357,7 +1407,8 @@ def get_frame_comparison(work_id):
                 'timestamp': timestamp,
                 'difference': float(pose_diff),
                 'has_difference': has_difference,
-                'has_pose_data': has_pose_data
+                'has_pose_data': has_pose_data,
+                'pose_quality_issue': pose_quality_issue
             })
         
         return jsonify({

@@ -181,23 +181,31 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
           {frameData.frame_comparisons.map((frame, index) => (
             <div
               key={index}
-              className={`timeline-frame ${frame.has_difference ? 'has-difference' : ''} ${!frame.has_pose_data ? 'no-pose-data' : ''} ${index === currentFrame ? 'current' : ''}`}
+              className={`timeline-frame ${frame.has_difference ? 'has-difference' : ''} ${!frame.has_pose_data ? 'no-pose-data' : ''} ${frame.pose_quality_issue ? 'pose-quality-issue' : ''} ${index === currentFrame ? 'current' : ''}`}
               onClick={() => jumpToFrame(index)}
-              title={`帧 ${frame.frame_index}: ${frame.has_pose_data ? `差异值 ${frame.difference.toFixed(3)}` : '无骨骼数据'}`}
+              title={`帧 ${frame.frame_index}: ${
+                !frame.has_pose_data 
+                  ? '无骨骼数据' 
+                  : frame.pose_quality_issue 
+                    ? '骨骼提取质量差' 
+                    : `差异值 ${frame.difference.toFixed(3)}`
+              }`}
             >
               <div className="frame-number">{frame.frame_index}</div>
               <div className="frame-time">{frame.timestamp.toFixed(1)}s</div>
-              {frame.has_pose_data ? (
-                frame.has_difference && (
-                  <div className="difference-indicator">
-                    {frame.difference.toFixed(2)}
-                  </div>
-                )
-              ) : (
+              {!frame.has_pose_data ? (
                 <div className="no-pose-indicator">
                   无数据
                 </div>
-              )}
+              ) : frame.pose_quality_issue ? (
+                <div className="quality-issue-indicator">
+                  质量差
+                </div>
+              ) : frame.has_difference ? (
+                <div className="difference-indicator">
+                  {frame.difference.toFixed(2)}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -210,7 +218,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
               <td className="stat-label">总帧数:</td>
               <td className="stat-value">{frameData.frame_comparisons.length}</td>
               <td className="stat-label">有效对比帧数:</td>
-              <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_pose_data).length}</td>
+              <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_pose_data && !f.pose_quality_issue).length}</td>
               <td className="stat-label">差异帧数:</td>
               <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_difference).length}</td>
             </tr>
@@ -218,7 +226,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
               <td className="stat-label">同步率:</td>
               <td className="stat-value">
                 {(() => {
-                  const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data);
+                  const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data && !f.pose_quality_issue);
                   if (validFrames.length === 0) return '0%';
                   const syncFrames = validFrames.filter(f => !f.has_difference).length;
                   return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
@@ -231,8 +239,14 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                   : '0秒'
                 }
               </td>
-              <td className="stat-label">差异阈值:</td>
-              <td className="stat-value">{frameData.threshold}</td>
+              <td className="stat-label">数据质量:</td>
+              <td className="stat-value">
+                {(() => {
+                  const totalFrames = frameData.frame_comparisons.length;
+                  const qualityFrames = frameData.frame_comparisons.filter(f => f.has_pose_data && !f.pose_quality_issue).length;
+                  return totalFrames > 0 ? ((qualityFrames / totalFrames) * 100).toFixed(1) + '%' : '0%';
+                })()}
+              </td>
             </tr>
           </tbody>
         </table>

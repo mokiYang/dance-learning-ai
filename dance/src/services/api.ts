@@ -43,6 +43,7 @@ export interface FrameComparison {
   difference: number;
   has_difference: boolean;
   has_pose_data: boolean;
+  pose_quality_issue: boolean;
 }
 
 export interface FrameComparisonResult {
