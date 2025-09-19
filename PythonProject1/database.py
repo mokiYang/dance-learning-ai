@@ -228,12 +228,16 @@ class DanceDatabase:
     
     def save_pose_data(self, video_id: str, video_type: str, frame_index: int, 
                       pose_data: List, timestamp: float = None) -> bool:
-        """保存姿势数据到数据库"""
+        """保存姿势数据到数据库（支持None值表示无骨骼数据）"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            pose_data_json = json.dumps(pose_data)
+            # 处理None值（无骨骼数据的情况）
+            if pose_data is None:
+                pose_data_json = None
+            else:
+                pose_data_json = json.dumps(pose_data)
             
             cursor.execute('''
                 INSERT OR REPLACE INTO pose_data 
@@ -269,7 +273,11 @@ class DanceDatabase:
             
             results = []
             for row in cursor.fetchall():
-                pose_data = json.loads(row['pose_data'])
+                # 处理None值（无骨骼数据的情况）
+                if row['pose_data'] is None:
+                    pose_data = None
+                else:
+                    pose_data = json.loads(row['pose_data'])
                 results.append({
                     'frame_index': row['frame_index'],
                     'pose_data': pose_data,

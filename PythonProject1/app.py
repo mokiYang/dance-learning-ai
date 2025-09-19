@@ -61,7 +61,7 @@ def get_video_fps(video_file):
     return fps
 
 def extract_poses_from_video(video_file, n=5):
-    """从视频中提取姿势数据并返回字典（只使用数据库存储）"""
+    """从视频中提取姿势数据并返回字典（等距提取，包含无骨骼数据的帧）"""
     # 优化后的关键点位 - 只保留舞蹈动作分析最核心的点位
     selected_landmarks = [
         0,  # 鼻子 - 头部位置
@@ -102,6 +102,9 @@ def extract_poses_from_video(video_file, n=5):
                         if i in selected_landmarks:
                             pose_data.append([lm.x, lm.y, lm.z, lm.visibility])
                     poses_data[frame_idx] = pose_data
+                else:
+                    # 没有检测到骨骼数据，存储None作为标记
+                    poses_data[frame_idx] = None
             frame_idx += 1
     cap.release()
     return poses_data
@@ -254,7 +257,11 @@ def get_video_frames_with_poses(video_file, n=5):
     return frames_data
 
 def calculate_pose_difference(pose1, pose2):
-    """计算两个姿势数据之间的差异"""
+    """计算两个姿势数据之间的差异（处理None值）"""
+    # 如果任一姿势数据为None，返回特殊值表示无法比较
+    if pose1 is None or pose2 is None:
+        return -1  # 使用-1表示无骨骼数据
+    
     if len(pose1) != len(pose2):
         return float('inf')
 
@@ -1314,6 +1321,10 @@ def get_frame_comparison(work_id):
         
         min_frames = min(len(ref_frames), len(user_frames))
         
+        # 获取两个视频的FPS信息，用于准确计算时间戳
+        ref_fps = reference_video.get('fps', 5)  # 默认5fps
+        user_fps = user_video.get('fps', 5)      # 默认5fps
+        
         for i in range(min_frames):
             ref_frame_idx = ref_frames[i]
             user_frame_idx = user_frames[i]
@@ -1324,13 +1335,29 @@ def get_frame_comparison(work_id):
             # 计算姿势差异
             pose_diff = calculate_pose_difference(ref_pose, user_pose)
             
+            # 使用实际帧索引计算时间戳，确保时间戳基于实际对比的帧数
+            # 使用参考视频的FPS来计算时间戳，因为时间轴以参考视频为准
+            timestamp = ref_frame_idx / ref_fps
+            
+            # 判断是否有骨骼数据
+            has_pose_data = ref_pose is not None and user_pose is not None
+            has_difference = False
+            
+            if has_pose_data:
+                # 有骨骼数据时，正常比较差异
+                has_difference = bool(pose_diff > comparison_record['threshold'])
+            else:
+                # 无骨骼数据时，标记为无法比较
+                pose_diff = -1
+            
             frame_comparisons.append({
                 'frame_index': i,
                 'reference_frame': ref_frame_idx,
                 'user_frame': user_frame_idx,
-                'timestamp': ref_frame_idx * 0.2,  # 假设5帧间隔
+                'timestamp': timestamp,
                 'difference': float(pose_diff),
-                'has_difference': bool(pose_diff > comparison_record['threshold'])
+                'has_difference': has_difference,
+                'has_pose_data': has_pose_data
             })
         
         return jsonify({

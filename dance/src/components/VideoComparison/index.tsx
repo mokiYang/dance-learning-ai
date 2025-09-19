@@ -185,15 +185,21 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
           {frameData.frame_comparisons.map((frame, index) => (
             <div
               key={index}
-              className={`timeline-frame ${frame.has_difference ? 'has-difference' : ''} ${index === currentFrame ? 'current' : ''}`}
+              className={`timeline-frame ${frame.has_difference ? 'has-difference' : ''} ${!frame.has_pose_data ? 'no-pose-data' : ''} ${index === currentFrame ? 'current' : ''}`}
               onClick={() => jumpToFrame(index)}
-              title={`帧 ${frame.frame_index}: 差异值 ${frame.difference.toFixed(3)}`}
+              title={`帧 ${frame.frame_index}: ${frame.has_pose_data ? `差异值 ${frame.difference.toFixed(3)}` : '无骨骼数据'}`}
             >
               <div className="frame-number">{frame.frame_index}</div>
               <div className="frame-time">{frame.timestamp.toFixed(1)}s</div>
-              {frame.has_difference && (
-                <div className="difference-indicator">
-                  {frame.difference.toFixed(2)}
+              {frame.has_pose_data ? (
+                frame.has_difference && (
+                  <div className="difference-indicator">
+                    {frame.difference.toFixed(2)}
+                  </div>
+                )
+              ) : (
+                <div className="no-pose-indicator">
+                  无数据
                 </div>
               )}
             </div>
@@ -207,13 +213,31 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
           <span>{frameData.frame_comparisons.length}</span>
         </div>
         <div className="stat-item">
+          <span>有效对比帧数:</span>
+          <span>{frameData.frame_comparisons.filter(f => f.has_pose_data).length}</span>
+        </div>
+        <div className="stat-item">
           <span>差异帧数:</span>
           <span>{frameData.frame_comparisons.filter(f => f.has_difference).length}</span>
         </div>
         <div className="stat-item">
           <span>同步率:</span>
           <span>
-            {((frameData.frame_comparisons.length - frameData.frame_comparisons.filter(f => f.has_difference).length) / frameData.frame_comparisons.length * 100).toFixed(1)}%
+            {(() => {
+              const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data);
+              if (validFrames.length === 0) return '0%';
+              const syncFrames = validFrames.filter(f => !f.has_difference).length;
+              return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
+            })()}
+          </span>
+        </div>
+        <div className="stat-item">
+          <span>对比时长:</span>
+          <span>
+            {frameData.frame_comparisons.length > 0 
+              ? `${Math.max(...frameData.frame_comparisons.map(f => f.timestamp)).toFixed(1)}秒`
+              : '0秒'
+            }
           </span>
         </div>
       </div>
