@@ -1,0 +1,62 @@
+version: '3.8'
+
+# 开发环境配置 - 用于本地开发和测试
+# 这个文件用于同时启动前后端服务进行开发
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dance-learning-backend-dev
+    ports:
+      - "8128:8128"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/temp:/app/temp
+      - ./backend/video_storage:/app/video_storage
+      - ./backend/data:/app/data  # SQLite 数据库文件持久化存储
+    environment:
+      - FLASK_ENV=development
+      - PYTHONPATH=/app
+      - UPLOAD_FOLDER=/app/uploads
+      - TEMP_FOLDER=/app/temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8128/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - dance-learning-dev-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dance-learning-frontend-dev
+    ports:
+      - "3000:80"  # 开发环境使用不同端口
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dance-learning-dev-network
+
+# 数据卷配置
+volumes:
+  postgres_data:
+    driver: local
+
+# 网络配置
+networks:
+  dance-learning-dev-network:
+    driver: bridge

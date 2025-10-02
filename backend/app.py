@@ -15,8 +15,8 @@ app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 
 # 配置上传文件夹
-UPLOAD_FOLDER = 'uploads'
-TEMP_FOLDER = 'temp'
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
+TEMP_FOLDER = os.environ.get('TEMP_FOLDER', '/app/temp')
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -141,7 +141,8 @@ def generate_pose_video(video_file, output_file, n=5):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     # 创建临时视频文件（无音频）
-    temp_video = tempfile.mktemp(suffix='_temp_video.mp4')
+    import uuid
+    temp_video = os.path.join(TEMP_FOLDER, f"temp_{uuid.uuid4().hex}_video.mp4")
     
     # 创建视频写入器 - 使用更兼容的编码格式
     fourcc = cv2.VideoWriter_fourcc(*'H264')

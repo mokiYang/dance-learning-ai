@@ -1,0 +1,108 @@
+# Git
+.git
+.gitignore
+README.md
+DEPLOYMENT.md
+
+# Backend (exclude entire backend directory)
+../backend/
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python (not needed for frontend)
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build outputs (keep dist for production)
+# dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Database files (not needed for frontend)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Development
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Large video files that shouldn't be in build context
+*.mp4
+*.avi
+*.mov
+*.mkv
+video_storage/
+uploads/
+videos/
+
+# Source maps (optional, can be included for debugging)
+*.map
+
+# Test files
+**/*.test.*
+**/*.spec.*
+test/
+tests/
+__tests__/

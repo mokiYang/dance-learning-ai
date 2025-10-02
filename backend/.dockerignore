@@ -1,0 +1,103 @@
+# Git
+.git
+.gitignore
+README.md
+DEPLOYMENT.md
+
+# Frontend (exclude entire frontend directory)
+../frontend/
+../nginx/
+
+# Node.js (not needed for backend)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+server.log
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Database files (keep only essential)
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Development
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Large video files that shouldn't be in build context
+# Note: We need to include some essential files for the app to work
+# *.mp4
+# *.avi
+# *.mov
+# *.mkv
+# video_storage/
+# uploads/
+# videos/
+
+# But exclude very large files to keep image size reasonable
+uploads/user/
+video_storage/temp/
