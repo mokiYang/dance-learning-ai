@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiService, ReferenceVideo } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
 import './index.less';
 
 const VideoPlayer: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -570,13 +572,22 @@ const VideoPlayer: React.FC = () => {
         <button className="btn btn-primary" onClick={handleBackToList}>
           返回列表
         </button>
-        <button 
-          className="btn btn-success" 
-          onClick={handleFollowLearning}
-          disabled={isCameraActive}
-        >
-          跟学
-        </button>
+        {isAuthenticated ? (
+          <button 
+            className="btn btn-success" 
+            onClick={handleFollowLearning}
+            disabled={isCameraActive}
+          >
+            跟学
+          </button>
+        ) : (
+          <button 
+            className="btn btn-login-required" 
+            onClick={() => navigate('/profile')}
+          >
+            登录后可跟学
+          </button>
+        )}
         
         {/* 录制控制按钮 */}
         {isRecording && (
@@ -603,7 +614,7 @@ const VideoPlayer: React.FC = () => {
         <video
           ref={videoRef}
           className="video-player"
-          src={`http://localhost:8128/video/${video.video_id}`}
+          src={`http://192.168.1.111:8128/video/${video.video_id}`}
           controls
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}

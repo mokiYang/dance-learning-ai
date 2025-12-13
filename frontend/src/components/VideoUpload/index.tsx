@@ -1,5 +1,6 @@
 import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { apiService } from "../../services/api";
+import { useAuth } from "../../contexts/AuthContext";
 import "./index.less";
 
 interface VideoUploadProps {
@@ -15,6 +16,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
   onUploadSuccess,
   onUploadError,
 }, ref) => {
+  const { user } = useAuth(); // 获取当前登录用户
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -61,10 +63,13 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     setUploadSuccess(null);
 
     try {
+      // 使用当前登录用户的用户名作为作者
+      const authorName = user?.username || author || "匿名用户";
+      
       const response = await apiService.uploadReferenceVideo(
         selectedFile,
         description,
-        author,
+        authorName,
         title
       );
 
@@ -112,6 +117,11 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     fileInput?.click();
   };
 
+  // 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    handleFileUploadClick
+  }));
+
   const handleCancel = () => {
     setSelectedFile(null);
     setDescription("");
@@ -143,18 +153,8 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
         style={{ display: "none" }}
       />
 
-      {!showForm ? (
-        /* 上传按钮 */
-        <button
-          className="upload-button"
-          onClick={handleFileUploadClick}
-          disabled={uploading}
-        >
-          <span className="upload-icon">📤</span>
-          上传教学视频
-        </button>
-      ) : (
-        /* 上传表单 */
+      {/* 上传表单弹窗 */}
+      {showForm && (
         <div className="upload-form">
           <div className="form-header">
             <h3>上传视频信息</h3>
@@ -181,18 +181,6 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
             </div>
             
             <div className="form-group">
-              <label htmlFor="author">作者姓名 *</label>
-              <input
-                id="author"
-                type="text"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-                placeholder="请输入作者姓名"
-                required
-              />
-            </div>
-            
-            <div className="form-group">
               <label htmlFor="description">视频描述</label>
               <textarea
                 id="description"
@@ -214,7 +202,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
               <button
                 className="submit-button"
                 onClick={handleUpload}
-                disabled={uploading || !author.trim() || !title.trim()}
+                disabled={uploading || !title.trim()}
               >
                 {uploading ? (
                   <>

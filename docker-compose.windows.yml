@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # 前端服务 - Windows 优化
+  frontend:
+    image: dance-learning-ai-frontend:202510191115-amd64
+    container_name: dance-frontend-windows
+    platform: linux/amd64
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - dance-learning-network
+
+  # 后端服务 - Windows 优化
+  backend:
+    image: dance-learning-ai-backend:202510191115-amd64
+    container_name: dance-backend-windows
+    platform: linux/amd64
+    ports:
+      - "8128:8128"
+    volumes:
+      # 数据持久化 - Windows 路径
+      - ./backend/data:/app/data
+      - ./backend/uploads:/app/uploads
+      - ./backend/temp:/app/temp
+      - ./backend/video_storage:/app/video_storage
+    environment:
+      - FLASK_ENV=production
+      - PYTHONPATH=/app
+      - UPLOAD_FOLDER=/app/uploads
+      - TEMP_FOLDER=/app/temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8128/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - dance-learning-network
+    depends_on:
+      - frontend
+
+networks:
+  dance-learning-network:
+    driver: bridge
+
+# Windows 专用配置说明
+# 1. 使用 platform: linux/amd64 确保 WSL2 兼容性
+# 2. 数据卷映射到 Windows 文件系统
+# 3. 健康检查确保服务正常运行
+# 4. 网络配置支持容器间通信

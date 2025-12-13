@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiService, ReferenceVideo } from "../../services/api";
-import VideoUpload from "../VideoUpload";
+import VideoUpload, { VideoUploadRef } from "../VideoUpload";
 import "./index.less";
 
 const VideoList: React.FC = () => {
@@ -9,6 +9,7 @@ const VideoList: React.FC = () => {
   const [videos, setVideos] = useState<ReferenceVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const uploadRef = useRef<VideoUploadRef>(null);
 
   // 使用ref来跟踪请求状态和缓存
   const requestRef = useRef<Promise<any> | null>(null);
@@ -19,6 +20,19 @@ const VideoList: React.FC = () => {
 
   useEffect(() => {
     fetchVideos();
+
+    // 监听自定义上传事件
+    const handleUploadTrigger = () => {
+      if (uploadRef.current) {
+        uploadRef.current.handleFileUploadClick();
+      }
+    };
+
+    window.addEventListener('triggerUpload', handleUploadTrigger);
+    
+    return () => {
+      window.removeEventListener('triggerUpload', handleUploadTrigger);
+    };
   }, []);
 
   const fetchVideos = async () => {
@@ -35,7 +49,7 @@ const VideoList: React.FC = () => {
     // 如果已经有请求在进行中，等待它完成
     if (requestRef.current) {
       try {
-        const result = await requestRef.current;
+        await requestRef.current;
         return;
       } catch (err) {
         // 如果之前的请求失败，继续执行新的请求
@@ -77,14 +91,8 @@ const VideoList: React.FC = () => {
   };
 
   const handleUploadSuccess = () => {
-    // 上传成功后清除缓存并重新加载视频列表
-    cacheRef.current = null;
+    // 上传成功后重新加载视频列表
     fetchVideos();
-  };
-
-  const handleUploadError = (errorMsg: string) => {
-    // 可以在这里处理上传错误，比如显示全局错误提示
-    console.error("上传错误:", errorMsg);
   };
 
   if (loading) {
@@ -106,45 +114,44 @@ const VideoList: React.FC = () => {
 
   return (
     <div className="video-list-container">
-      <div className="header-section">
-        <h2>舞蹈教学视频</h2>
-        <VideoUpload
-          onUploadSuccess={handleUploadSuccess}
-          onUploadError={handleUploadError}
-        />
-      </div>
-
+      {/* VideoUpload组件（隐藏的上传功能） */}
+      <VideoUpload 
+        ref={uploadRef} 
+        onUploadSuccess={handleUploadSuccess}
+      />
+      
+      {/* 视频网格 */}
       <div className="video-grid">
-        {videos.map((video) => (
-          <div
-            key={video.filename}
-            className="video-card"
-            onClick={() => handleVideoClick(video.video_id)}
-          >
-            <video
-              className="video-thumbnail"
-              src={`http://localhost:8128/video/${video.video_id}`}
-              preload="metadata"
-              muted
-            />
-            <div className="video-info">
-              <h3 className="video-title">{video.title}</h3>
-              {video.author && (
-                <p className="video-author">作者: {video.author}</p>
-              )}
-              {video.description && (
-                <p className="video-description">{video.description}</p>
-              )}
-            </div>
+        {videos.length === 0 ? (
+          <div className="empty-state">
+            <p>暂无视频，快来上传第一个吧！</p>
           </div>
-        ))}
+        ) : (
+          videos.map((video) => (
+            <div
+              key={video.filename}
+              className="video-card"
+              onClick={() => handleVideoClick(video.video_id)}
+            >
+              <video
+                className="video-thumbnail"
+                src={`http://192.168.1.111:8128/video/${video.video_id}`}
+                preload="metadata"
+                muted
+              />
+              <div className="video-info">
+                <h3 className="video-title">{video.title}</h3>
+                {video.author && (
+                  <p className="video-author">👤 {video.author}</p>
+                )}
+                {video.description && (
+                  <p className="video-description">{video.description}</p>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
-
-      {videos.length === 0 && !loading && (
-        <div className="empty-state" onClick={() => navigate("/upload")}>
-          <p>暂无教学视频，请上传第一个视频开始使用</p>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,0 +1,161 @@
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #ffffff;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 1000;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+
+  .tab-bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 8px 0;
+    height: 100%;
+
+    &:hover {
+      background-color: #f7f7f7;
+    }
+
+    &.active {
+      .tab-bar-icon {
+        transform: scale(1.1);
+      }
+
+      .tab-bar-label {
+        color: #667eea;
+        font-weight: 600;
+      }
+    }
+
+    .tab-bar-icon {
+      font-size: 24px;
+      margin-bottom: 4px;
+      transition: transform 0.3s ease;
+    }
+
+    .tab-bar-label {
+      font-size: 12px;
+      color: #666666;
+      transition: all 0.3s ease;
+    }
+  }
+
+  // 中间上传按钮
+  .tab-bar-upload {
+    flex: 0 0 auto;
+    position: relative;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+
+    .upload-button {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      transition: all 0.3s ease;
+      position: relative;
+      bottom: 8px;
+
+      &:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.5);
+      }
+
+      &:active {
+        transform: scale(0.95);
+      }
+
+      .upload-icon {
+        font-size: 32px;
+        color: #ffffff;
+        font-weight: 300;
+        line-height: 1;
+      }
+    }
+  }
+}
+
+// 移动端适配
+@media (max-width: 768px) {
+  .tab-bar {
+    height: 56px;
+
+    .tab-bar-item {
+      padding: 6px 0;
+
+      .tab-bar-icon {
+        font-size: 22px;
+        margin-bottom: 3px;
+      }
+
+      .tab-bar-label {
+        font-size: 11px;
+      }
+    }
+
+    .tab-bar-upload {
+      padding: 0 16px;
+
+      .upload-button {
+        width: 48px;
+        height: 48px;
+        bottom: 6px;
+
+        .upload-icon {
+          font-size: 28px;
+        }
+      }
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .tab-bar {
+    height: 52px;
+
+    .tab-bar-item {
+      padding: 4px 0;
+
+      .tab-bar-icon {
+        font-size: 20px;
+        margin-bottom: 2px;
+      }
+
+      .tab-bar-label {
+        font-size: 10px;
+      }
+    }
+
+    .tab-bar-upload {
+      padding: 0 12px;
+
+      .upload-button {
+        width: 40px;
+        height: 40px;
+        bottom: 4px;
+
+        .upload-icon {
+          font-size: 26px;
+        }
+      }
+    }
+  }
+}

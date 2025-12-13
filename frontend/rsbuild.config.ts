@@ -13,8 +13,17 @@ export default defineConfig(async () => {
     source: { entry },
     server: {
       port: 3000,
+      host: '0.0.0.0',
       base: '/',
       open: true,
+    },
+    dev: {
+      hmr: true, // 启用热模块替换
+      liveReload: true, // 启用实时重载
+    },
+    output: {
+      // 开发环境禁用缓存
+      cleanDistPath: true,
     },
   };
 });

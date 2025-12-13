@@ -27,6 +27,31 @@ class DanceDatabase:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # 创建用户表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                email TEXT,
+                avatar_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        ''')
+        
+        # 创建用户会话表（存储Token）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
         # 创建教学视频表
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reference_videos (
@@ -99,6 +124,9 @@ class DanceDatabase:
         ''')
         
         # 创建索引以提高查询性能
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_reference_videos_video_id ON reference_videos(video_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_videos_video_id ON user_videos(video_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_comparison_records_comparison_id ON comparison_records(comparison_id)')
@@ -480,6 +508,126 @@ class DanceDatabase:
         except Exception as e:
             print(f"获取数据库统计信息失败: {e}")
             return {}
+
+    # ========== 用户认证相关方法 ==========
+    
+    def create_user(self, username: str, password_hash: str, email: str = None) -> bool:
+        """创建新用户"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, email)
+                VALUES (?, ?, ?)
+            ''', (username, password_hash, email))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.IntegrityError:
+            print(f"用户名 {username} 已存在")
+            return False
+        except Exception as e:
+            print(f"创建用户失败: {e}")
+            return False
+    
+    def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """根据用户名获取用户信息"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"获取用户信息失败: {e}")
+            return None
+    
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """根据用户ID获取用户信息"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"获取用户信息失败: {e}")
+            return None
+    
+    def update_last_login(self, user_id: int) -> bool:
+        """更新用户最后登录时间"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE users 
+                SET last_login = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (user_id,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"更新最后登录时间失败: {e}")
+            return False
+    
+    def save_session(self, user_id: int, token: str, expires_at: str) -> bool:
+        """保存用户会话"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO user_sessions (user_id, token, expires_at)
+                VALUES (?, ?, ?)
+            ''', (user_id, token, expires_at))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"保存会话失败: {e}")
+            return False
+    
+    def get_session_by_token(self, token: str) -> Optional[Dict]:
+        """根据Token获取会话信息"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT * FROM user_sessions WHERE token = ?', (token,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"获取会话信息失败: {e}")
+            return None
+    
+    def delete_session(self, token: str) -> bool:
+        """删除会话（注销）"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('DELETE FROM user_sessions WHERE token = ?', (token,))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"删除会话失败: {e}")
+            return False
 
 # 全局数据库实例
 db = DanceDatabase()

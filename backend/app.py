@@ -7,16 +7,25 @@ import numpy as np
 import tempfile
 import shutil
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import db
+import jwt
+from functools import wraps
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 
+# JWT 配置
+SECRET_KEY = os.environ.get('SECRET_KEY', 'dance-learning-secret-key-change-in-production')
+TOKEN_EXPIRY_DAYS = 365  # Token有效期365天（接近永久）
+
 # 配置上传文件夹
+# 自动检测运行环境：Docker 环境下使用 /app/temp，本地开发使用相对路径 temp
+default_temp_folder = '/app/temp' if os.path.exists('/app') and os.access('/app', os.W_OK) else 'temp'
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
-TEMP_FOLDER = os.environ.get('TEMP_FOLDER', '/app/temp')
+TEMP_FOLDER = os.environ.get('TEMP_FOLDER', default_temp_folder)
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -29,6 +38,59 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB 限制
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# ========== 认证相关函数 ==========
+
+def generate_auth_token(user_id: int, username: str) -> str:
+    """生成认证Token（365天有效期）"""
+    payload = {
+        'user_id': user_id,
+        'username': username,
+        'exp': datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS),
+        'iat': datetime.utcnow()
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+def verify_auth_token(token: str) -> dict:
+    """验证Token并返回用户信息"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return {
+            'valid': True,
+            'user_id': payload['user_id'],
+            'username': payload['username']
+        }
+    except jwt.ExpiredSignatureError:
+        return {'valid': False, 'error': 'Token已过期'}
+    except jwt.InvalidTokenError:
+        return {'valid': False, 'error': 'Token无效'}
+
+def require_auth(f):
+    """认证装饰器 - 保护需要登录的接口"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization', '')
+        token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else ''
+        
+        if not token:
+            return jsonify({'success': False, 'error': '未登录'}), 401
+        
+        result = verify_auth_token(token)
+        if not result['valid']:
+            return jsonify({'success': False, 'error': result.get('error', 'Token验证失败')}), 401
+        
+        # 将用户信息附加到请求上下文
+        request.current_user = {
+            'user_id': result['user_id'],
+            'username': result['username']
+        }
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
+# ========== 视频处理函数 ==========
+
 
 def get_video_duration(video_file):
     """获取视频时长（秒）"""
@@ -365,9 +427,202 @@ def health_check():
         'message': 'Dance pose comparison service is running'
     })
 
+# ========== 认证相关接口 ==========
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """用户注册"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        email = data.get('email', '').strip()
+        
+        # 验证输入
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': '用户名和密码不能为空'
+            }), 400
+        
+        if len(username) < 3:
+            return jsonify({
+                'success': False,
+                'error': '用户名长度至少3个字符'
+            }), 400
+        
+        if len(password) < 6:
+            return jsonify({
+                'success': False,
+                'error': '密码长度至少6个字符'
+            }), 400
+        
+        # 检查用户名是否已存在
+        existing_user = db.get_user_by_username(username)
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'error': '用户名已存在'
+            }), 400
+        
+        # 创建用户
+        password_hash = generate_password_hash(password)
+        if not db.create_user(username, password_hash, email):
+            return jsonify({
+                'success': False,
+                'error': '注册失败，请稍后重试'
+            }), 500
+        
+        # 获取新创建的用户信息
+        user = db.get_user_by_username(username)
+        
+        # 生成Token
+        token = generate_auth_token(user['id'], user['username'])
+        
+        # 保存会话
+        expires_at = (datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS)).isoformat()
+        db.save_session(user['id'], token, expires_at)
+        
+        # 更新最后登录时间
+        db.update_last_login(user['id'])
+        
+        return jsonify({
+            'success': True,
+            'token': token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user.get('email', ''),
+                'created_at': user['created_at']
+            },
+            'message': '注册成功'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """用户登录"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        
+        # 验证输入
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'error': '用户名和密码不能为空'
+            }), 400
+        
+        # 查找用户
+        user = db.get_user_by_username(username)
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': '用户名或密码错误'
+            }), 401
+        
+        # 验证密码
+        if not check_password_hash(user['password_hash'], password):
+            return jsonify({
+                'success': False,
+                'error': '用户名或密码错误'
+            }), 401
+        
+        # 生成Token
+        token = generate_auth_token(user['id'], user['username'])
+        
+        # 保存会话
+        expires_at = (datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS)).isoformat()
+        db.save_session(user['id'], token, expires_at)
+        
+        # 更新最后登录时间
+        db.update_last_login(user['id'])
+        
+        return jsonify({
+            'success': True,
+            'token': token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user.get('email', ''),
+                'avatar_url': user.get('avatar_url', ''),
+                'created_at': user['created_at'],
+                'last_login': user['last_login']
+            },
+            'message': '登录成功'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/logout', methods=['POST'])
+@require_auth
+def logout():
+    """用户注销"""
+    try:
+        auth_header = request.headers.get('Authorization', '')
+        token = auth_header.replace('Bearer ', '')
+        
+        # 删除会话
+        db.delete_session(token)
+        
+        return jsonify({
+            'success': True,
+            'message': '注销成功'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auth/current-user', methods=['GET'])
+@require_auth
+def get_current_user():
+    """获取当前登录用户信息"""
+    try:
+        user = db.get_user_by_id(request.current_user['user_id'])
+        if not user:
+            return jsonify({
+                'success': False,
+                'error': '用户不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user.get('email', ''),
+                'avatar_url': user.get('avatar_url', ''),
+                'created_at': user['created_at'],
+                'last_login': user['last_login']
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ========== 视频相关接口 ==========
+
+
 @app.route('/api/upload-user-video', methods=['POST'])
+@require_auth
 def upload_user_video():
-    """上传用户视频并提取骨骼数据（临时缓存）"""
+    """上传用户视频并提取骨骼数据（临时缓存）- 需要登录"""
     try:
         # 检查是否有用户视频上传
         if 'user_video' not in request.files:
@@ -1001,8 +1256,9 @@ def list_user_videos():
         }), 500
 
 @app.route('/api/upload-reference', methods=['POST'])
+@require_auth
 def upload_reference_video():
-    """上传参考视频并自动提取骨骼数据"""
+    """上传参考视频并自动提取骨骼数据 - 需要登录"""
     try:
         if 'video' not in request.files:
             return jsonify({
@@ -1071,6 +1327,9 @@ def upload_reference_video():
             
             # 生成标记骨骼的视频
             print(f"正在为参考视频 {filename} 生成标记骨骼的视频...")
+            # 创建输出目录
+            output_dir = os.path.join(TEMP_FOLDER, f"ref_{video_id}")
+            os.makedirs(output_dir, exist_ok=True)
             pose_video_path = os.path.join(output_dir, "pose_video.mp4")
             generate_pose_video(filepath, pose_video_path, n=5)
             

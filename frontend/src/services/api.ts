@@ -1,5 +1,13 @@
 // API服务配置
-const API_BASE_URL = 'http://localhost:8128/api';
+const API_BASE_URL = 'http://192.168.1.111:8128/api';
+
+// Token存储键名
+const TOKEN_KEY = 'dance_auth_token';
+
+// 获取Token
+const getAuthToken = (): string | null => {
+  return localStorage.getItem(TOKEN_KEY);
+};
 
 // 接口类型定义
 export interface VideoInfo {
@@ -117,7 +125,7 @@ class ApiService {
     this.baseUrl = baseUrl;
   }
 
-  // 通用请求方法，支持去重
+  // 通用请求方法，支持去重和自动添加Token
   private async makeRequest<T>(url: string, options?: RequestInit): Promise<T> {
     const requestKey = `${options?.method || 'GET'}:${url}`;
     
@@ -126,8 +134,38 @@ class ApiService {
       return this.pendingRequests.get(requestKey)!;
     }
 
+    // 添加Token到请求头
+    const token = getAuthToken();
+    const headers: HeadersInit = {
+      ...options?.headers,
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     // 创建新的请求
-    const requestPromise = fetch(url, options).then(response => response.json());
+    const requestPromise = fetch(url, {
+      ...options,
+      headers,
+    }).then(async response => {
+      // 处理401未授权错误
+      if (response.status === 401) {
+        // Token过期或无效，清除本地存储
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem('dance_current_user');
+        
+        // 如果不在登录页，跳转到个人页（登录页）
+        if (window.location.pathname !== '/profile') {
+          window.location.href = '/profile';
+        }
+        
+        throw new Error('未登录或登录已过期，请重新登录');
+      }
+      
+      return response.json();
+    });
+    
     this.pendingRequests.set(requestKey, requestPromise);
 
     try {
@@ -221,7 +259,7 @@ class ApiService {
 
   // 获取标记骨骼的视频文件
   async getPoseVideo(workId: string, videoType: 'reference' | 'user'): Promise<Blob> {
-    const response = await fetch(`http://localhost:8128/api/pose-video/${workId}/${videoType}`);
+    const response = await fetch(`http://192.168.1.111:8128/api/pose-video/${workId}/${videoType}`);
     if (!response.ok) {
       throw new Error(`获取视频失败: ${response.statusText}`);
     }
@@ -230,7 +268,7 @@ class ApiService {
 
   // 获取标记骨骼的视频URL（用于直接播放）
   getPoseVideoUrl(workId: string, videoType: 'reference' | 'user'): string {
-    return `http://localhost:8128/api/pose-video/${workId}/${videoType}`;
+    return `http://192.168.1.111:8128/api/pose-video/${workId}/${videoType}`;
   }
 }
 
