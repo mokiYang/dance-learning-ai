@@ -614,7 +614,7 @@ const VideoPlayer: React.FC = () => {
         <video
           ref={videoRef}
           className="video-player"
-          src={`http://192.168.1.111:8128/video/${video.video_id}`}
+          src={`http://localhost:8128/video/${video.video_id}`}
           controls
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}

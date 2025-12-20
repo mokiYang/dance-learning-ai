@@ -55,7 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 登录
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await fetch('http://192.168.1.111:8128/api/auth/login', {
+      const response = await fetch('http://localhost:8128/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 注册
   const register = async (username: string, password: string, email?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await fetch('http://192.168.1.111:8128/api/auth/register', {
+      const response = await fetch('http://localhost:8128/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     if (token) {
       try {
-        await fetch('http://192.168.1.111:8128/api/auth/logout', {
+        await fetch('http://localhost:8128/api/auth/logout', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

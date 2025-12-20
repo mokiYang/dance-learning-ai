@@ -1,5 +1,11 @@
 // API服务配置
-const API_BASE_URL = 'http://192.168.1.111:8128/api';
+// 生产环境使用相对路径，通过 nginx 代理；开发环境使用 localhost
+const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8128/api' : '/api';
+const SERVER_BASE_URL = import.meta.env.DEV ? 'http://localhost:8128' : '';
+
+// 导出获取服务器基础URL的函数（供其他组件使用）
+export const getServerBaseUrl = () => SERVER_BASE_URL;
+export const getVideoUrl = (videoId: string) => `${SERVER_BASE_URL}/video/${videoId}`;
 
 // Token存储键名
 const TOKEN_KEY = 'dance_auth_token';
@@ -259,7 +265,8 @@ class ApiService {
 
   // 获取标记骨骼的视频文件
   async getPoseVideo(workId: string, videoType: 'reference' | 'user'): Promise<Blob> {
-    const response = await fetch(`http://192.168.1.111:8128/api/pose-video/${workId}/${videoType}`);
+    const baseUrl = import.meta.env.DEV ? 'http://localhost:8128' : '';
+    const response = await fetch(`${baseUrl}/api/pose-video/${workId}/${videoType}`);
     if (!response.ok) {
       throw new Error(`获取视频失败: ${response.statusText}`);
     }
@@ -268,7 +275,8 @@ class ApiService {
 
   // 获取标记骨骼的视频URL（用于直接播放）
   getPoseVideoUrl(workId: string, videoType: 'reference' | 'user'): string {
-    return `http://192.168.1.111:8128/api/pose-video/${workId}/${videoType}`;
+    const baseUrl = import.meta.env.DEV ? 'http://localhost:8128' : '';
+    return `${baseUrl}/api/pose-video/${workId}/${videoType}`;
   }
 }
 

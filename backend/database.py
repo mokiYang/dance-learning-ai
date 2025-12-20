@@ -18,8 +18,10 @@ class DanceDatabase:
     
     def get_connection(self):
         """获取数据库连接"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30)  # 增加超时时间
         conn.row_factory = sqlite3.Row  # 使查询结果可以通过列名访问
+        conn.execute("PRAGMA journal_mode=WAL")  # 使用WAL模式提高并发性能
+        conn.execute("PRAGMA busy_timeout=30000")  # 30秒超时
         return conn
     
     def init_database(self):

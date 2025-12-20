@@ -135,7 +135,7 @@ const VideoList: React.FC = () => {
             >
               <video
                 className="video-thumbnail"
-                src={`http://192.168.1.111:8128/video/${video.video_id}`}
+                src={`http://localhost:8128/video/${video.video_id}`}
                 preload="metadata"
                 muted
               />

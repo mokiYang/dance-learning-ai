@@ -28,8 +28,11 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # 复制 nginx 配置文件
 COPY nginx-standalone.conf /etc/nginx/conf.d/default.conf
 
+# 创建 SSL 证书目录（证书通过 volume 挂载）
+RUN mkdir -p /etc/nginx/ssl
+
 # 暴露端口
-EXPOSE 80
+EXPOSE 80 443
 
 # 启动 nginx
 CMD ["nginx", "-g", "daemon off;"]
