@@ -1,10 +1,11 @@
 import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { apiService } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
+import { showToast } from "../Toast/ToastContainer";
 import "./index.less";
 
 interface VideoUploadProps {
-  onUploadSuccess?: () => void;
+  onUploadSuccess?: (taskId?: string, videoId?: string) => void;
   onUploadError?: (error: string) => void;
 }
 
@@ -18,8 +19,6 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
 }, ref) => {
   const { user } = useAuth(); // 获取当前登录用户
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
@@ -27,7 +26,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
   const [title, setTitle] = useState("");
 
   // 生成唯一的ID
-  const uploadId = `video-upload-${Math.random().toString(36).substr(2, 9)}`;
+  const uploadId = `video-upload-${Math.random().toString(36).substring(2, 11)}`;
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -36,7 +35,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     // 验证文件类型
     if (!file.type.startsWith("video/")) {
       const errorMsg = "请选择有效的视频文件";
-      setUploadError(errorMsg);
+      showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
     }
@@ -45,22 +44,19 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
       const errorMsg = "文件大小不能超过100MB";
-      setUploadError(errorMsg);
+      showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
     }
 
     setSelectedFile(file);
     setShowForm(true);
-    setUploadError(null);
   };
 
   const handleUpload = async () => {
     if (!selectedFile) return;
 
     setUploading(true);
-    setUploadError(null);
-    setUploadSuccess(null);
 
     try {
       // 使用当前登录用户的用户名作为作者
@@ -74,34 +70,41 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
       );
 
       if (response.success) {
-        let successMsg = `视频 "${response.filename}" 上传成功！`;
-        
-        // 显示骨骼数据提取状态
-        if (response.pose_data_extracted && response.pose_video_generated) {
-          successMsg += ` 骨骼数据和标记骨骼视频已自动生成（${response.pose_frames}帧）`;
-        } else if (response.pose_data_extracted) {
-          successMsg += ` 骨骼数据已自动提取（${response.pose_frames}帧）`;
-        } else if (response.warning) {
-          successMsg += ` 注意：${response.warning}`;
-        }
-        
-        setUploadSuccess(successMsg);
-        onUploadSuccess?.();
         // 重置表单
         setSelectedFile(null);
         setDescription("");
         setAuthor("");
         setTitle("");
         setShowForm(false);
+        
+        // 获取task_id和video_id
+        const taskId = response.task_id;
+        const videoId = response.video_id;
+        
+        if (taskId) {
+          // 有异步任务，显示全局成功提示
+          showToast(
+            `视频 "${response.filename}" 上传成功！`,
+            "success",
+            3000
+          );
+          
+          onUploadSuccess?.(taskId, videoId);
+        } else {
+          // 没有task_id，使用旧的同步模式
+          showToast(`视频 "${response.filename}" 上传成功！`, "success", 2000);
+          
+          onUploadSuccess?.(undefined, videoId);
+        }
       } else {
         const errorMsg = "上传失败，请重试";
-        setUploadError(errorMsg);
+        showToast(errorMsg, "error");
         onUploadError?.(errorMsg);
       }
     } catch (err) {
       console.error("上传失败:", err);
       const errorMsg = "上传失败，请检查网络连接";
-      setUploadError(errorMsg);
+      showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
     } finally {
       setUploading(false);
@@ -128,18 +131,9 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     setAuthor("");
     setTitle("");
     setShowForm(false);
-    setUploadError(null);
     // 清空文件输入框
     const fileInput = document.getElementById(uploadId) as HTMLInputElement;
     if (fileInput) fileInput.value = "";
-  };
-
-  const clearError = () => {
-    setUploadError(null);
-  };
-
-  const clearSuccess = () => {
-    setUploadSuccess(null);
   };
 
   return (
@@ -218,21 +212,6 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* 上传状态提示 */}
-      {uploadError && (
-        <div className="upload-error">
-          <span>❌ {uploadError}</span>
-          <button onClick={clearError}>关闭</button>
-        </div>
-      )}
-
-      {uploadSuccess && (
-        <div className="upload-success">
-          <span>✅ {uploadSuccess}</span>
-          <button onClick={clearSuccess}>关闭</button>
         </div>
       )}
     </div>

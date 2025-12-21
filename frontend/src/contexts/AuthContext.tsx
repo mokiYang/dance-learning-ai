@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { apiService, TOKEN_KEY, USER_KEY } from '../services/api';
 
 // 用户信息类型
 export interface User {
@@ -23,10 +24,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// LocalStorage键名
-const TOKEN_KEY = 'dance_auth_token';
-const USER_KEY = 'dance_current_user';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -55,20 +52,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 登录
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await fetch('http://localhost:8128/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await response.json();
+      const data = await apiService.login(username, password);
 
       if (data.success) {
-        setToken(data.token);
-        setUser(data.user);
-        localStorage.setItem(TOKEN_KEY, data.token);
+        setToken(data.token!);
+        setUser(data.user!);
+        localStorage.setItem(TOKEN_KEY, data.token!);
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));
         return { success: true };
       } else {
@@ -83,20 +72,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 注册
   const register = async (username: string, password: string, email?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await fetch('http://localhost:8128/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password, email }),
-      });
-
-      const data = await response.json();
+      const data = await apiService.register(username, password, email);
 
       if (data.success) {
-        setToken(data.token);
-        setUser(data.user);
-        localStorage.setItem(TOKEN_KEY, data.token);
+        setToken(data.token!);
+        setUser(data.user!);
+        localStorage.setItem(TOKEN_KEY, data.token!);
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));
         return { success: true };
       } else {
@@ -112,12 +93,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = async () => {
     if (token) {
       try {
-        await fetch('http://localhost:8128/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        await apiService.logout();
       } catch (error) {
         console.error('注销请求失败:', error);
       }

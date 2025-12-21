@@ -6,11 +6,11 @@ import VideoResult from './components/VideoResult';
 import Profile from './components/Profile';
 import Header from './components/Header';
 import TabBar from './components/TabBar';
+import ToastContainer from './components/Toast/ToastContainer';
 import './App.less';
 
 function App() {
   const handleUploadClick = () => {
-    console.log('上传点击!!!!!');
     // 触发上传逻辑，可以通过 ref 或者状态管理来触发 VideoList 中的上传
     const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     if (uploadInput) {
@@ -22,6 +22,8 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="App">
+          {/* 全局通知组件 */}
+          <ToastContainer />
           {/* 顶部导航栏 */}
           <Header />
           {/* 主内容区域 */}
@@ -33,7 +35,6 @@ function App() {
               <Route path="/profile" element={<Profile />} />
             </Routes>
           </main>
-
           {/* 底部导航栏 */}
           <TabBar onUploadClick={handleUploadClick} />
         </div>

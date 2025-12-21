@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiService, ReferenceVideo } from '../../services/api';
+import { apiService, ReferenceVideo, getVideoUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
 import './index.less';
@@ -614,7 +614,7 @@ const VideoPlayer: React.FC = () => {
         <video
           ref={videoRef}
           className="video-player"
-          src={`http://localhost:8128/video/${video.video_id}`}
+          src={getVideoUrl(video.video_id)}
           controls
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}

@@ -1,19 +1,42 @@
-// API服务配置
-// 生产环境使用相对路径，通过 nginx 代理；开发环境使用 localhost
-const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:8128/api' : '/api';
-const SERVER_BASE_URL = import.meta.env.DEV ? 'http://localhost:8128' : '';
+/**
+ * API 配置和服务
+ * 统一管理所有 API 相关的 URL 配置和请求方法
+ * 生产环境使用相对路径，通过 nginx 代理；开发环境使用 localhost
+ */
 
-// 导出获取服务器基础URL的函数（供其他组件使用）
+// ==================== 配置部分 ====================
+
+// 判断是否为开发环境
+const isDev = import.meta.env.DEV;
+
+// 服务器基础 URL
+export const SERVER_BASE_URL = isDev ? 'http://localhost:8128' : '';
+
+// API 基础 URL
+export const API_BASE_URL = isDev ? 'http://localhost:8128/api' : '/api';
+
+// Token 存储键名
+export const TOKEN_KEY = 'dance_auth_token';
+
+// 用户信息存储键名
+export const USER_KEY = 'dance_current_user';
+
+// 获取服务器基础 URL（供其他组件使用）
 export const getServerBaseUrl = () => SERVER_BASE_URL;
+
+// 获取视频 URL
 export const getVideoUrl = (videoId: string) => `${SERVER_BASE_URL}/video/${videoId}`;
 
-// Token存储键名
-const TOKEN_KEY = 'dance_auth_token';
+// 获取骨骼视频 URL
+export const getPoseVideoUrl = (workId: string, videoType: 'reference' | 'user') => 
+  `${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`;
 
 // 获取Token
 const getAuthToken = (): string | null => {
   return localStorage.getItem(TOKEN_KEY);
 };
+
+// ==================== 类型定义 ====================
 
 // 接口类型定义
 export interface VideoInfo {
@@ -106,6 +129,8 @@ export interface ReferenceVideo {
 
 export interface UploadResult {
   success: boolean;
+  video_id?: string;
+  task_id?: string;  // 异步任务ID
   filename: string;
   filepath: string;
   duration: number;
@@ -142,8 +167,8 @@ class ApiService {
 
     // 添加Token到请求头
     const token = getAuthToken();
-    const headers: HeadersInit = {
-      ...options?.headers,
+    const headers: Record<string, string> = {
+      ...(options?.headers as Record<string, string> || {}),
     };
     
     if (token) {
@@ -154,23 +179,7 @@ class ApiService {
     const requestPromise = fetch(url, {
       ...options,
       headers,
-    }).then(async response => {
-      // 处理401未授权错误
-      if (response.status === 401) {
-        // Token过期或无效，清除本地存储
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem('dance_current_user');
-        
-        // 如果不在登录页，跳转到个人页（登录页）
-        if (window.location.pathname !== '/profile') {
-          window.location.href = '/profile';
-        }
-        
-        throw new Error('未登录或登录已过期，请重新登录');
-      }
-      
-      return response.json();
-    });
+    }).then(response => response.json());
     
     this.pendingRequests.set(requestKey, requestPromise);
 
@@ -265,8 +274,7 @@ class ApiService {
 
   // 获取标记骨骼的视频文件
   async getPoseVideo(workId: string, videoType: 'reference' | 'user'): Promise<Blob> {
-    const baseUrl = import.meta.env.DEV ? 'http://localhost:8128' : '';
-    const response = await fetch(`${baseUrl}/api/pose-video/${workId}/${videoType}`);
+    const response = await fetch(`${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`);
     if (!response.ok) {
       throw new Error(`获取视频失败: ${response.statusText}`);
     }
@@ -275,8 +283,118 @@ class ApiService {
 
   // 获取标记骨骼的视频URL（用于直接播放）
   getPoseVideoUrl(workId: string, videoType: 'reference' | 'user'): string {
-    const baseUrl = import.meta.env.DEV ? 'http://localhost:8128' : '';
-    return `${baseUrl}/api/pose-video/${workId}/${videoType}`;
+    return `${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`;
+  }
+
+  // 获取任务状态
+  async getTaskStatus(taskId: string): Promise<{
+    success: boolean;
+    task: {
+      task_id: string;
+      video_id: string;
+      video_type: string;
+      task_type: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      error_message?: string;
+      pose_data_extracted?: boolean;
+      pose_video_generated?: boolean;
+      pose_frames?: number;
+      created_at: string;
+      started_at?: string;
+      completed_at?: string;
+    };
+  }> {
+    return this.makeRequest(`${this.baseUrl}/task-status/${taskId}`);
+  }
+
+  // 轮询任务状态直到完成
+  async pollTaskStatus(
+    taskId: string, 
+    onProgress?: (progress: number, status: string) => void,
+    interval: number = 1000,
+    maxAttempts: number = 300
+  ): Promise<any> {
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      try {
+        const result = await this.getTaskStatus(taskId);
+        
+        if (!result.success) {
+          throw new Error('获取任务状态失败');
+        }
+        
+        const { task } = result;
+        
+        // 调用进度回调
+        if (onProgress) {
+          onProgress(task.progress, task.status);
+        }
+        
+        // 任务完成
+        if (task.status === 'completed') {
+          return task;
+        }
+        
+        // 任务失败
+        if (task.status === 'failed') {
+          throw new Error(task.error_message || '任务处理失败');
+        }
+        
+        // 等待一段时间后继续轮询
+        await new Promise(resolve => setTimeout(resolve, interval));
+        
+      } catch (error) {
+        console.error('轮询任务状态出错:', error);
+        throw error;
+      }
+    }
+    
+    throw new Error('任务处理超时');
+  }
+
+  // ==================== 认证相关 API ====================
+
+  // 用户登录
+  async login(username: string, password: string): Promise<{
+    success: boolean;
+    token?: string;
+    user?: any;
+    error?: string;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  // 用户注册
+  async register(username: string, password: string, email?: string): Promise<{
+    success: boolean;
+    token?: string;
+    user?: any;
+    error?: string;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password, email }),
+    });
+  }
+
+  // 用户登出
+  async logout(): Promise<{ success: boolean }> {
+    return this.makeRequest(`${this.baseUrl}/auth/logout`, {
+      method: 'POST',
+    });
   }
 }
 

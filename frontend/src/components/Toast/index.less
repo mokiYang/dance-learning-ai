@@ -1,0 +1,100 @@
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
+  padding: 14px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  
+  font-size: 15px;
+  font-weight: 500;
+  color: white;
+  
+  min-width: 300px;
+  max-width: 500px;
+  
+  transition: all 0.3s ease;
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.toast-info {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.toast-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+}
+
+// 显示动画
+.toast-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+// 隐藏动画
+.toast-hide {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+
+// 移动端适配
+@media (max-width: 768px) {
+  .toast {
+    min-width: auto;
+    max-width: calc(100vw - 40px);
+    font-size: 14px;
+    padding: 12px 16px;
+  }
+  
+  .toast-icon {
+    font-size: 16px;
+  }
+  
+  .toast-close {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}

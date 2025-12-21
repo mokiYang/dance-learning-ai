@@ -71,10 +71,14 @@ temp/
 tmp/
 *.tmp
 
-# Database files (keep only essential)
+# Database files - 全部排除，使用外部挂载
+*.db
+*.sqlite
+*.sqlite3
 *.db-journal
 *.db-wal
 *.db-shm
+data/
 
 # Docker
 Dockerfile*

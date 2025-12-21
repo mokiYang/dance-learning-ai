@@ -125,6 +125,23 @@ class DanceDatabase:
             )
         ''')
         
+        # 创建异步任务表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS async_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT UNIQUE NOT NULL,
+                video_id TEXT NOT NULL,
+                video_type TEXT NOT NULL,  -- 'reference' 或 'user'
+                task_type TEXT NOT NULL,  -- 'pose_extraction' 或 'pose_video_generation'
+                status TEXT DEFAULT 'pending',  -- 'pending', 'processing', 'completed', 'failed'
+                progress INTEGER DEFAULT 0,  -- 0-100
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP
+            )
+        ''')
+        
         # 创建索引以提高查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)')
@@ -133,6 +150,8 @@ class DanceDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_videos_video_id ON user_videos(video_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_comparison_records_comparison_id ON comparison_records(comparison_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_pose_data_video_id ON pose_data(video_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_async_tasks_task_id ON async_tasks(task_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_async_tasks_video_id ON async_tasks(video_id)')
         
         conn.commit()
         conn.close()
@@ -280,6 +299,50 @@ class DanceDatabase:
             return True
         except Exception as e:
             print(f"保存姿势数据失败: {e}")
+            return False
+    
+    def save_pose_data_batch(self, video_id: str, video_type: str, poses_data: Dict) -> bool:
+        """批量保存姿势数据到数据库（性能优化版本）"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # 准备批量插入数据
+            batch_data = []
+            skipped_frames = 0
+            for frame_index, pose_data in poses_data.items():
+                # 跳过None值（无骨骼数据的帧）
+                if pose_data is None:
+                    skipped_frames += 1
+                    continue
+                
+                pose_data_json = json.dumps(pose_data)
+                timestamp = frame_index * 0.2  # 假设5fps，每帧0.2秒
+                batch_data.append((video_id, video_type, frame_index, pose_data_json, timestamp))
+            
+            if skipped_frames > 0:
+                print(f"跳过 {skipped_frames} 个无骨骼数据的帧")
+            
+            # 批量插入
+            cursor.executemany('''
+                INSERT OR REPLACE INTO pose_data 
+                (video_id, video_type, frame_index, pose_data, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            ''', batch_data)
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"批量保存姿势数据失败: {e}")
+            import traceback
+            traceback.print_exc()
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
             return False
     
     def get_pose_data(self, video_id: str, frame_index: int = None) -> List[Dict]:
@@ -630,6 +693,102 @@ class DanceDatabase:
         except Exception as e:
             print(f"删除会话失败: {e}")
             return False
+    
+    # ========== 异步任务管理方法 ==========
+    
+    def create_async_task(self, task_id: str, video_id: str, video_type: str, task_type: str) -> bool:
+        """创建异步任务"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO async_tasks (task_id, video_id, video_type, task_type, status)
+                VALUES (?, ?, ?, ?, 'pending')
+            ''', (task_id, video_id, video_type, task_type))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"创建异步任务失败: {e}")
+            return False
+    
+    def update_task_status(self, task_id: str, status: str, progress: int = None, 
+                          error_message: str = None) -> bool:
+        """更新任务状态"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            if status == 'processing' and progress is None:
+                cursor.execute('''
+                    UPDATE async_tasks 
+                    SET status = ?, started_at = CURRENT_TIMESTAMP
+                    WHERE task_id = ?
+                ''', (status, task_id))
+            elif status == 'completed':
+                cursor.execute('''
+                    UPDATE async_tasks 
+                    SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP
+                    WHERE task_id = ?
+                ''', (status, task_id))
+            elif status == 'failed':
+                cursor.execute('''
+                    UPDATE async_tasks 
+                    SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE task_id = ?
+                ''', (status, error_message, task_id))
+            else:
+                cursor.execute('''
+                    UPDATE async_tasks 
+                    SET status = ?, progress = ?
+                    WHERE task_id = ?
+                ''', (status, progress or 0, task_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"更新任务状态失败: {e}")
+            return False
+    
+    def get_task_status(self, task_id: str) -> Optional[Dict]:
+        """获取任务状态"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT * FROM async_tasks WHERE task_id = ?', (task_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            return dict(row) if row else None
+        except Exception as e:
+            print(f"获取任务状态失败: {e}")
+            return None
+    
+    def get_tasks_by_video(self, video_id: str) -> List[Dict]:
+        """获取视频相关的所有任务"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM async_tasks 
+                WHERE video_id = ?
+                ORDER BY created_at DESC
+            ''', (video_id,))
+            
+            tasks = []
+            for row in cursor.fetchall():
+                tasks.append(dict(row))
+            
+            conn.close()
+            return tasks
+        except Exception as e:
+            print(f"获取视频任务列表失败: {e}")
+            return []
 
 # 全局数据库实例
 db = DanceDatabase()

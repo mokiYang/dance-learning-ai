@@ -54,6 +54,6 @@ echo "[成功] 前端镜像推送完成!"
 echo "========================================"
 echo "  ${FRONTEND_IMAGE}"
 echo
-echo "拉取命令:"
-echo "  docker pull ${FRONTEND_IMAGE}"
+echo "远程部署指令:"
+echo "  /root/update-frontend.sh ${TAG}"
 echo

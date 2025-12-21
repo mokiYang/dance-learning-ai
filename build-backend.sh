@@ -54,6 +54,6 @@ echo "[成功] 后端镜像推送完成!"
 echo "========================================"
 echo "  ${BACKEND_IMAGE}"
 echo
-echo "拉取命令:"
-echo "  docker pull ${BACKEND_IMAGE}"
+echo "远程部署指令:"
+echo "  /root/update-backend.sh ${TAG}"
 echo

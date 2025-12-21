@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from database import db
 import jwt
 from functools import wraps
+import threading
+import traceback
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -90,6 +92,65 @@ def require_auth(f):
     return decorated_function
 
 # ========== 视频处理函数 ==========
+
+def async_extract_poses_and_generate_video(task_id, video_id, filepath, video_type='reference'):
+    """异步提取骨骼数据并生成标记骨骼视频"""
+    try:
+        print(f"[任务 {task_id}] 开始处理视频 {video_id}")
+        
+        # 更新任务状态为处理中
+        db.update_task_status(task_id, 'processing', progress=10)
+        
+        # 提取骨骼数据
+        print(f"[任务 {task_id}] 正在提取骨骼数据...")
+        poses_data = extract_poses_from_video(filepath, n=5)
+        
+        db.update_task_status(task_id, 'processing', progress=50)
+        print(f"[任务 {task_id}] 提取到 {len(poses_data)} 帧骨骼数据")
+        
+        # 批量保存骨骼数据到数据库（性能优化）
+        print(f"[任务 {task_id}] 正在保存骨骼数据到数据库...")
+        db.update_task_status(task_id, 'processing', progress=55)
+        
+        # 使用批量保存方法，一次性保存所有数据
+        db.save_pose_data_batch(video_id, video_type, poses_data)
+        
+        # 更新姿势数据状态
+        db.update_pose_extraction_status(video_id, True, video_type)
+        
+        db.update_task_status(task_id, 'processing', progress=65)
+        print(f"[任务 {task_id}] 骨骼数据已保存到数据库")
+        
+        # 只为参考视频生成标记骨骼视频
+        if video_type == 'reference':
+            print(f"[任务 {task_id}] 正在生成标记骨骼视频...")
+            db.update_task_status(task_id, 'processing', progress=70)
+            
+            output_dir = os.path.join(TEMP_FOLDER, f"ref_{video_id}")
+            os.makedirs(output_dir, exist_ok=True)
+            pose_video_path = os.path.join(output_dir, "pose_video.mp4")
+            
+            # 生成标记骨骼视频
+            generate_pose_video(filepath, pose_video_path, n=5)
+            
+            db.update_task_status(task_id, 'processing', progress=90)
+            
+            # 更新标记骨骼视频路径
+            db.update_pose_video_path(video_id, pose_video_path)
+            print(f"[任务 {task_id}] 标记骨骼视频生成完成")
+        else:
+            # 用户视频不生成标记骨骼视频，直接跳到90%
+            db.update_task_status(task_id, 'processing', progress=90)
+        
+        # 任务完成
+        db.update_task_status(task_id, 'completed', progress=100)
+        print(f"[任务 {task_id}] 处理完成")
+        
+    except Exception as e:
+        error_msg = f"处理失败: {str(e)}\n{traceback.format_exc()}"
+        print(f"[任务 {task_id}] {error_msg}")
+        db.update_task_status(task_id, 'failed', error_message=error_msg)
+
 
 
 def get_video_duration(video_file):
@@ -1258,7 +1319,7 @@ def list_user_videos():
 @app.route('/api/upload-reference', methods=['POST'])
 @require_auth
 def upload_reference_video():
-    """上传参考视频并自动提取骨骼数据 - 需要登录"""
+    """上传参考视频并异步提取骨骼数据 - 需要登录"""
     try:
         if 'video' not in request.files:
             return jsonify({
@@ -1279,8 +1340,9 @@ def upload_reference_video():
                 'error': '不支持的文件格式'
             }), 400
 
-        # 生成唯一视频ID
+        # 生成唯一视频ID和任务ID
         video_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
         
         # 保存参考视频
         filename = secure_filename(file.filename)
@@ -1304,62 +1366,23 @@ def upload_reference_video():
                 'error': '保存到数据库失败'
             }), 500
 
-        # 自动提取骨骼数据并生成标记骨骼的视频
-        try:
-            print(f"正在为参考视频 {filename} 提取骨骼数据...")
-            
-            # 提取骨骼数据
-            poses_data = extract_poses_from_video(
-                filepath, 
-                n=5
-            )
-            
-            print(f"提取到 {len(poses_data)} 帧骨骼数据")
-            
-            # 保存骨骼数据到数据库
-            for frame_idx, pose_data in poses_data.items():
-                db.save_pose_data(video_id, 'reference', frame_idx, pose_data, frame_idx * 0.2)
-            
-            # 更新姿势数据状态
-            db.update_pose_extraction_status(video_id, True, 'reference')
-            
-            print(f"参考视频 {filename} 骨骼数据提取完成")
-            
-            # 生成标记骨骼的视频
-            print(f"正在为参考视频 {filename} 生成标记骨骼的视频...")
-            # 创建输出目录
-            output_dir = os.path.join(TEMP_FOLDER, f"ref_{video_id}")
-            os.makedirs(output_dir, exist_ok=True)
-            pose_video_path = os.path.join(output_dir, "pose_video.mp4")
-            generate_pose_video(filepath, pose_video_path, n=5)
-            
-            # 更新标记骨骼视频路径
-            db.update_pose_video_path(video_id, pose_video_path)
-            
-            print(f"参考视频 {filename} 标记骨骼视频生成完成")
-            
-        except Exception as pose_error:
-            print(f"处理骨骼数据失败: {pose_error}")
-            # 即使骨骼数据处理失败，也返回成功，但添加警告信息
-            return jsonify({
-                'success': True,
-                'video_id': video_id,
-                'filename': filename,
-                'filepath': filepath,
-                'duration': duration,
-                'fps': fps,
-                'description': description,
-                'tags': tags,
-                'author': author,
-                'title': title,
-                'pose_data_extracted': False,
-                'pose_video_generated': False,
-                'warning': f'视频上传成功，但骨骼数据处理失败: {str(pose_error)}'
-            })
+        # 创建异步任务
+        db.create_async_task(task_id, video_id, 'reference', 'pose_extraction')
+        
+        # 启动后台线程处理骨骼提取
+        thread = threading.Thread(
+            target=async_extract_poses_and_generate_video,
+            args=(task_id, video_id, filepath, 'reference')
+        )
+        thread.daemon = True
+        thread.start()
+        
+        print(f"视频 {filename} 上传成功，已启动后台任务 {task_id} 进行骨骼提取")
 
         return jsonify({
             'success': True,
             'video_id': video_id,
+            'task_id': task_id,
             'filename': filename,
             'filepath': filepath,
             'duration': duration,
@@ -1368,10 +1391,9 @@ def upload_reference_video():
             'tags': tags,
             'author': author,
             'title': title,
-            'pose_data_extracted': True,
-            'pose_video_generated': True,
-            'pose_frames': len(poses_data),
-            'message': '参考视频上传成功，骨骼数据和标记骨骼视频已自动生成'
+            'pose_data_extracted': False,
+            'pose_video_generated': False,
+            'message': '参考视频上传成功，正在后台处理骨骼数据'
         })
 
     except Exception as e:
@@ -1396,6 +1418,58 @@ def list_reference_videos():
             'videos': videos
         })
 
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/task-status/<task_id>', methods=['GET'])
+def get_task_status(task_id):
+    """获取异步任务状态"""
+    try:
+        task = db.get_task_status(task_id)
+        
+        if not task:
+            return jsonify({
+                'success': False,
+                'error': '任务不存在'
+            }), 404
+        
+        # 如果任务已完成，检查视频的实际状态
+        if task['status'] == 'completed':
+            video_id = task['video_id']
+            video_type = task['video_type']
+            
+            video_info = db.get_video_by_id(video_id, video_type)
+            if video_info:
+                task['pose_data_extracted'] = bool(video_info.get('pose_data_extracted', 0))
+                task['pose_video_generated'] = bool(video_info.get('pose_video_generated', 0))
+                task['pose_frames'] = len(db.get_pose_data(video_id))
+        
+        return jsonify({
+            'success': True,
+            'task': task
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/videos/<video_id>/tasks', methods=['GET'])
+def get_video_tasks(video_id):
+    """获取视频相关的所有任务"""
+    try:
+        tasks = db.get_tasks_by_video(video_id)
+        
+        return jsonify({
+            'success': True,
+            'video_id': video_id,
+            'tasks': tasks
+        })
+    
     except Exception as e:
         return jsonify({
             'success': False,
@@ -1481,9 +1555,9 @@ def stream_video(video_id):
                          206,
                          mimetype='video/mp4',
                          direct_passthrough=True)
-            rv.headers.add('Content-Range', f'bytes {byte1}-{byte2}/{size}')
-            rv.headers.add('Accept-Ranges', 'bytes')
-            rv.headers.add('Content-Length', str(length))
+            rv.headers['Content-Range'] = f'bytes {byte1}-{byte2}/{size}'
+            rv.headers['Accept-Ranges'] = 'bytes'
+            rv.headers['Content-Length'] = str(length)
             return rv
         else:
             # 完整文件请求
@@ -1561,9 +1635,9 @@ def get_pose_video(work_id, video_type):
                          206,
                          mimetype='video/mp4',
                          direct_passthrough=True)
-            rv.headers.add('Content-Range', f'bytes {byte1}-{byte2}/{size}')
-            rv.headers.add('Accept-Ranges', 'bytes')
-            rv.headers.add('Content-Length', str(length))
+            rv.headers['Content-Range'] = f'bytes {byte1}-{byte2}/{size}'
+            rv.headers['Accept-Ranges'] = 'bytes'
+            rv.headers['Content-Length'] = str(length)
             return rv
         else:
             # 完整文件请求
