@@ -27,6 +27,9 @@ export const getServerBaseUrl = () => SERVER_BASE_URL;
 // 获取视频 URL
 export const getVideoUrl = (videoId: string) => `${SERVER_BASE_URL}/video/${videoId}`;
 
+// 获取视频缩略图 URL
+export const getThumbnailUrl = (videoId: string) => `${SERVER_BASE_URL}/thumbnail/${videoId}`;
+
 // 获取骨骼视频 URL
 export const getPoseVideoUrl = (workId: string, videoType: 'reference' | 'user') => 
   `${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`;
@@ -103,6 +106,7 @@ export interface UserVideoUpload {
   fps: number;
   pose_data_extracted: boolean;
   message?: string;
+  task_id?: string;  // 后台任务ID（用于轮询状态）
 }
 
 export interface ReferenceVideo {
@@ -123,6 +127,7 @@ export interface ReferenceVideo {
   tags?: string;
   author?: string;
   title?: string;
+  thumbnail_path?: string;
   has_pose_data?: boolean;
   has_pose_video?: boolean;
 }
@@ -264,6 +269,56 @@ class ApiService {
     return this.makeRequest(`${this.baseUrl}/delete-user-video/${userVideoId}`, {
       method: 'DELETE',
     });
+  }
+
+  // 获取用户视频状态（检查骨骼数据提取是否完成）
+  async getUserVideoStatus(videoId: string): Promise<{
+    success: boolean;
+    pose_data_extracted: boolean;
+    pose_extraction_error?: string;
+    pose_extraction_progress?: number;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/user-video-status/${videoId}`);
+  }
+
+  // 轮询用户视频状态直到骨骼数据提取完成（无超时限制，由后端控制处理完成）
+  async pollUserVideoStatus(
+    videoId: string,
+    onProgress?: (progress: number, extracted: boolean) => void,
+    interval: number = 2000
+  ): Promise<{ success: boolean; error?: string }> {
+    while (true) {
+      try {
+        const result = await this.getUserVideoStatus(videoId);
+        
+        console.log('轮询状态:', result);
+        
+        if (!result.success) {
+          return { success: false, error: '获取视频状态失败' };
+        }
+        
+        // 调用进度回调
+        if (onProgress) {
+          onProgress(result.pose_extraction_progress || 0, result.pose_data_extracted);
+        }
+        
+        // 骨骼数据提取完成（无论成功或失败）
+        if (result.pose_data_extracted) {
+          console.log('检测到提取完成，error:', result.pose_extraction_error);
+          if (result.pose_extraction_error) {
+            return { success: false, error: result.pose_extraction_error };
+          }
+          return { success: true };
+        }
+        
+        // 等待一段时间后继续轮询
+        await new Promise(resolve => setTimeout(resolve, interval));
+        
+      } catch (error) {
+        console.error('轮询用户视频状态出错:', error);
+        return { success: false, error: '网络错误，请重试' };
+      }
+    }
   }
 
 

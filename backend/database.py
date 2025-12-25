@@ -73,9 +73,18 @@ class DanceDatabase:
                 description TEXT,
                 tags TEXT,
                 author TEXT,
-                title TEXT
+                title TEXT,
+                thumbnail_path TEXT
             )
         ''')
+        
+        # 为已存在的表添加新字段（如果不存在）
+        try:
+            cursor.execute("ALTER TABLE reference_videos ADD COLUMN thumbnail_path TEXT")
+            print("已添加 thumbnail_path 字段到 reference_videos 表")
+        except sqlite3.OperationalError:
+            # 字段已存在，忽略错误
+            pass
         
         # 创建用户视频表
         cursor.execute('''
@@ -90,10 +99,25 @@ class DanceDatabase:
                 pose_data_path TEXT,
                 pose_data_extracted BOOLEAN DEFAULT FALSE,
                 pose_extraction_time TIMESTAMP,
+                pose_extraction_error TEXT,
+                pose_extraction_progress INTEGER DEFAULT 0,
                 user_id TEXT,
                 session_id TEXT
             )
         ''')
+        
+        # 为已存在的user_videos表添加新字段（如果不存在）
+        try:
+            cursor.execute("ALTER TABLE user_videos ADD COLUMN pose_extraction_error TEXT")
+            print("已添加 pose_extraction_error 字段到 user_videos 表")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE user_videos ADD COLUMN pose_extraction_progress INTEGER DEFAULT 0")
+            print("已添加 pose_extraction_progress 字段到 user_videos 表")
+        except sqlite3.OperationalError:
+            pass
         
         # 创建视频比较记录表
         cursor.execute('''
@@ -158,7 +182,8 @@ class DanceDatabase:
     
     def add_reference_video(self, video_id: str, filename: str, file_path: str, 
                            duration: float = None, fps: float = None, 
-                           description: str = None, tags: str = None, author: str = None, title: str = None) -> bool:
+                           description: str = None, tags: str = None, author: str = None, title: str = None,
+                           thumbnail_path: str = None) -> bool:
         """添加教学视频记录"""
         try:
             conn = self.get_connection()
@@ -166,9 +191,9 @@ class DanceDatabase:
             
             cursor.execute('''
                 INSERT INTO reference_videos 
-                (video_id, filename, file_path, duration, fps, description, tags, author, title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (video_id, filename, file_path, duration, fps, description, tags, author, title))
+                (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path))
             
             conn.commit()
             conn.close()
@@ -230,8 +255,15 @@ class DanceDatabase:
             print(f"更新姿势数据路径失败: {e}")
             return False
     
-    def update_pose_extraction_status(self, video_id: str, extracted: bool, video_type: str = 'user') -> bool:
-        """更新姿势数据提取状态"""
+    def update_pose_extraction_status(self, video_id: str, extracted: bool, video_type: str = 'user', error: str = None) -> bool:
+        """更新姿势数据提取状态
+        
+        Args:
+            video_id: 视频ID
+            extracted: 是否提取完成
+            video_type: 视频类型（'user' 或 'reference'）
+            error: 错误信息（如果提取失败）
+        """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
@@ -245,15 +277,34 @@ class DanceDatabase:
             else:
                 cursor.execute('''
                     UPDATE user_videos 
-                    SET pose_data_extracted = ?, pose_extraction_time = CURRENT_TIMESTAMP
+                    SET pose_data_extracted = ?, pose_extraction_time = CURRENT_TIMESTAMP, pose_extraction_error = ?
                     WHERE video_id = ?
-                ''', (extracted, video_id))
+                ''', (extracted, error, video_id))
             
             conn.commit()
             conn.close()
             return True
         except Exception as e:
             print(f"更新姿势提取状态失败: {e}")
+            return False
+    
+    def update_pose_extraction_progress(self, video_id: str, progress: int) -> bool:
+        """更新姿势数据提取进度（0-100）"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE user_videos 
+                SET pose_extraction_progress = ?
+                WHERE video_id = ?
+            ''', (progress, video_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"更新提取进度失败: {e}")
             return False
     
     def update_pose_video_path(self, video_id: str, pose_video_path: str) -> bool:
@@ -322,9 +373,16 @@ class DanceDatabase:
                 batch_data.append((video_id, video_type, frame_index, pose_data_json, timestamp))
             
             if skipped_frames > 0:
-                print(f"跳过 {skipped_frames} 个无骨骼数据的帧")
+                print(f"[批量保存] 跳过 {skipped_frames} 个无骨骼数据的帧")
+            
+            # 如果没有有效数据，直接返回成功（无需插入）
+            if len(batch_data) == 0:
+                print(f"[批量保存] 没有有效的骨骼数据需要保存")
+                conn.close()
+                return True
             
             # 批量插入
+            print(f"[批量保存] 准备保存 {len(batch_data)} 条骨骼数据")
             cursor.executemany('''
                 INSERT OR REPLACE INTO pose_data 
                 (video_id, video_type, frame_index, pose_data, timestamp)
@@ -333,9 +391,10 @@ class DanceDatabase:
             
             conn.commit()
             conn.close()
+            print(f"[批量保存] 成功保存 {len(batch_data)} 条骨骼数据")
             return True
         except Exception as e:
-            print(f"批量保存姿势数据失败: {e}")
+            print(f"[批量保存] 批量保存姿势数据失败: {e}")
             import traceback
             traceback.print_exc()
             if conn:

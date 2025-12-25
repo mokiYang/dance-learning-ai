@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiService, ReferenceVideo, getVideoUrl } from "../../services/api";
+import { apiService, ReferenceVideo, getVideoUrl, getThumbnailUrl } from "../../services/api";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
 import "./index.less";
 
@@ -210,12 +210,22 @@ const VideoList: React.FC = () => {
                 onClick={() => !isProcessing && handleVideoClick(video.video_id)}
               >
                 <div className="video-thumbnail-wrapper">
-                  <video
-                    className="video-thumbnail"
-                    src={getVideoUrl(video.video_id)}
-                    preload="metadata"
-                    muted
-                  />
+                  {video.thumbnail_path ? (
+                    <img
+                      className="video-thumbnail"
+                      src={getThumbnailUrl(video.video_id)}
+                      alt={video.title || video.filename}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <video
+                      className="video-thumbnail"
+                      src={getVideoUrl(video.video_id)}
+                      preload="metadata"
+                      muted
+                      playsInline
+                    />
+                  )}
                   {isProcessing && (
                     <div className="processing-overlay">
                       <div className="processing-spinner"></div>

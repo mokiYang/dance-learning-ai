@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { apiService, ReferenceVideo, ComparisonResult, UserVideoUpload } from '../../services/api';
+import { apiService, ReferenceVideo, ComparisonResult } from '../../services/api';
 import VideoComparison from '../VideoComparison';
+import { showToast } from '../Toast/ToastContainer';
 import './index.less';
 
 const VideoResult: React.FC = () => {
@@ -12,18 +13,17 @@ const VideoResult: React.FC = () => {
 
   const [video, setVideo] = useState<ReferenceVideo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [userVideoId, setUserVideoId] = useState<string>('');
-  const [uploadResult, setUploadResult] = useState<UserVideoUpload | null>(null);
   const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string>('');
   const [hasRecordedVideo, setHasRecordedVideo] = useState(false);
   const [showVideoComparison, setShowVideoComparison] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [extractionProgress, setExtractionProgress] = useState<string>('');
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 检查是否有传递过来的录制视频数据
   useEffect(() => {
@@ -48,14 +48,13 @@ const VideoResult: React.FC = () => {
   useEffect(() => {
     const fetchVideo = async () => {
       if (!id) {
-        setError('视频ID不能为空');
+        showToast('视频ID不能为空', 'error');
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        setError(null);
         
         const response = await apiService.getReferenceVideos();
         if (response.success) {
@@ -63,13 +62,13 @@ const VideoResult: React.FC = () => {
           if (foundVideo) {
             setVideo(foundVideo);
           } else {
-            setError('未找到指定的视频');
+            showToast('未找到指定的视频', 'error');
           }
         } else {
-          setError('获取视频数据失败');
+          showToast('获取视频数据失败', 'error');
         }
       } catch (err) {
-        setError('网络错误，请稍后重试');
+        showToast('网络错误，请稍后重试', 'error');
         console.error('获取视频数据失败:', err);
       } finally {
         setLoading(false);
@@ -79,13 +78,22 @@ const VideoResult: React.FC = () => {
     fetchVideo();
   }, [id]);
 
+  // 组件卸载时清理轮询定时器
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   // 录制视频后直接展示操作按钮，不自动进行分析
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      setError(null);
       
       // 创建预览URL
       const url = URL.createObjectURL(file);
@@ -95,71 +103,112 @@ const VideoResult: React.FC = () => {
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      setError('请先选择要上传的视频文件');
+      showToast('请先选择要上传的视频文件', 'error');
       return;
     }
 
     if (!video) {
-      setError('参考视频信息不存在');
+      showToast('参考视频信息不存在', 'error');
       return;
     }
 
     try {
       setUploading(true);
-      setError(null);
+      setExtractionProgress('正在上传视频...');
 
-      // 第一步：上传用户视频并提取骨骼数据
+      // 第一步：上传用户视频（后台异步提取骨骼数据）
       const uploadResult = await apiService.uploadUserVideo(selectedFile, video.video_id);
       
       if (!uploadResult.success) {
         throw new Error(uploadResult.message || '上传失败');
       }
 
-      setUploadResult(uploadResult);
-      setUserVideoId(uploadResult.user_video_id);
+      console.log('用户视频上传成功:', uploadResult);
 
-      // 第二步：使用已上传的视频进行比较
-      const comparisonResult = await apiService.compareWithUploadedVideo(
-        uploadResult.user_video_id,
-        video.video_id,
-        0.3
-      );
+      // 如果骨骼数据尚未提取完成，启动轮询
+      if (!uploadResult.pose_data_extracted) {
+        setExtractionProgress('正在提取骨骼数据（0%）...');
+        
+        try {
+          // 轮询用户视频状态（无超时限制）
+          const pollResult = await apiService.pollUserVideoStatus(
+            uploadResult.user_video_id,
+            (progress, extracted) => {
+              if (extracted) {
+                setExtractionProgress('骨骼数据提取完成');
+              } else {
+                setExtractionProgress(`正在提取骨骼数据（${progress}%）...`);
+              }
+            },
+            2000  // 每2秒轮询一次
+          );
+          
+          console.log('轮询结果:', pollResult);
+          
+          // 检查处理结果
+          if (!pollResult.success) {
+            console.log('骨骼提取失败，显示错误:', pollResult.error);
+            console.error('=== 准备显示Toast错误 ===');
+            showToast(pollResult.error || '骨骼数据提取失败', 'error', 6000);
+            setUploading(false);
+            setExtractionProgress('');
+            return;
+          }
+          
+          console.log('用户视频骨骼数据提取完成');
+        } catch (pollError) {
+          console.error('骨骼数据提取出错:', pollError);
+          showToast('网络错误，请重试', 'error');
+          setUploading(false);
+          setExtractionProgress('');
+          return;
+        }
+      }
 
-      if (comparisonResult.success) {
-        setComparisonResult(comparisonResult);
-      } else {
-        setError('视频分析失败，请重试');
+      // 第二步：进行对比分析
+      setExtractionProgress('正在进行动作对比分析...');
+      
+      try {
+        const comparisonResult = await apiService.compareWithUploadedVideo(
+          uploadResult.user_video_id,
+          video.video_id,
+          0.3
+        );
+
+        if (comparisonResult.success) {
+          // 检查是否有有效的骨骼数据
+          const userPoseFrames = comparisonResult.video_info?.user?.pose_frames || 0;
+          
+          if (userPoseFrames === 0) {
+            showToast('视频中未检测到人像，无法进行动作分析。请确保视频中有完整的人体姿态。', 'error', 5000);
+            setUploading(false);
+            setExtractionProgress('');
+            return;
+          }
+          
+          console.log('对比分析完成，显示结果界面');
+          setComparisonResult(comparisonResult);
+          setShowVideoComparison(true);
+          setExtractionProgress('');
+        } else {
+          showToast('视频分析失败，请重试', 'error');
+        }
+      } catch (compareError: any) {
+        console.error('对比分析失败:', compareError);
+        // 检查是否是骨骼数据相关的错误
+        const errorMsg = compareError?.message || String(compareError);
+        if (errorMsg.includes('骨骼数据不存在') || errorMsg.includes('pose_data')) {
+          showToast('视频中未检测到人像，无法进行动作分析。请上传包含完整人体姿态的舞蹈视频。', 'error', 5000);
+        } else {
+          showToast('视频分析失败：' + errorMsg, 'error');
+        }
       }
     } catch (err) {
-      setError('上传失败，请检查网络连接');
+      showToast('上传失败，请检查网络连接', 'error');
       console.error('上传失败:', err);
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleReupload = async () => {
-    // 如果已有用户视频，先删除旧的文件和骨骼数据
-    if (userVideoId) {
-      try {
-        await apiService.deleteUserVideo(userVideoId);
-      } catch (err) {
-        console.warn('删除旧视频失败:', err);
-      }
-    }
-
-    setSelectedFile(null);
-    setUploadedVideoUrl('');
-    setComparisonResult(null);
-    setUserVideoId('');
-    setUploadResult(null);
-    setError(null);
-    setHasRecordedVideo(false);
-    setRecordedVideoBlob(null);
-    setRecordedVideoUrl('');
-    setIsAnalyzing(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      setExtractionProgress('');
     }
   };
 
@@ -167,7 +216,6 @@ const VideoResult: React.FC = () => {
     if (!selectedFile) return;
     
     setUploading(true);
-    setError(null);
 
     try {
       // 直接上传视频，不进行分析
@@ -179,14 +227,14 @@ const VideoResult: React.FC = () => {
       );
 
       if (response.success) {
-        alert('视频上传成功！');
+        showToast('视频上传成功！', 'success');
         // 可以跳转到视频列表页面
         navigate('/videos');
       } else {
-        setError('视频上传失败，请重试');
+        showToast('视频上传失败，请重试', 'error');
       }
     } catch (err) {
-      setError('上传失败，请检查网络连接');
+      showToast('上传失败，请检查网络连接', 'error');
       console.error('上传失败:', err);
     } finally {
       setUploading(false);
@@ -197,37 +245,99 @@ const VideoResult: React.FC = () => {
     if (!selectedFile || !video) return;
     
     setIsAnalyzing(true);
-    setError(null);
+    setExtractionProgress('正在上传视频...');
 
     try {
-      // 第一步：上传用户视频
+      // 第一步：上传用户视频（后台异步提取骨骼数据）
       const uploadResult = await apiService.uploadUserVideo(selectedFile, video.video_id);
       
       if (!uploadResult.success) {
         throw new Error(uploadResult.message || '上传失败');
       }
 
-      setUploadResult(uploadResult);
-      setUserVideoId(uploadResult.user_video_id);
+      console.log('用户视频上传成功:', uploadResult);
+
+      // 如果骨骼数据尚未提取完成，启动轮询
+      if (!uploadResult.pose_data_extracted) {
+        setExtractionProgress('正在提取骨骼数据（0%）...');
+        
+        try {
+          // 轮询用户视频状态（无超时限制）
+          const pollResult = await apiService.pollUserVideoStatus(
+            uploadResult.user_video_id,
+            (progress, extracted) => {
+              if (extracted) {
+                setExtractionProgress('骨骼数据提取完成');
+              } else {
+                setExtractionProgress(`正在提取骨骼数据（${progress}%）...`);
+              }
+            },
+            2000  // 每2秒轮询一次
+          );
+          
+          console.log('轮询结果:', pollResult);
+          
+          // 检查处理结果
+          if (!pollResult.success) {
+            console.log('骨骼提取失败，显示错误:', pollResult.error);
+            console.error('=== 准备显示Toast错误 ===');
+            showToast(pollResult.error || '骨骼数据提取失败', 'error', 6000);
+            setIsAnalyzing(false);
+            return;
+          }
+          
+          console.log('用户视频骨骼数据提取完成');
+        } catch (pollError) {
+          console.error('骨骼数据提取出错:', pollError);
+          showToast('网络错误，请重试', 'error');
+          setIsAnalyzing(false);
+          return;
+        }
+      }
 
       // 第二步：进行分析
-      const comparisonResult = await apiService.compareWithUploadedVideo(
-        uploadResult.user_video_id,
-        video.video_id,
-        0.3
-      );
+      setExtractionProgress('正在进行动作对比分析...');
+      
+      try {
+        const comparisonResult = await apiService.compareWithUploadedVideo(
+          uploadResult.user_video_id,
+          video.video_id,
+          0.3
+        );
 
-      if (comparisonResult.success) {
-        setComparisonResult(comparisonResult);
-        setShowVideoComparison(true);
-      } else {
-        setError('视频分析失败，请重试');
+        if (comparisonResult.success) {
+          // 检查是否有有效的骨骼数据
+          const userPoseFrames = comparisonResult.video_info?.user?.pose_frames || 0;
+          
+          if (userPoseFrames === 0) {
+            showToast('视频中未检测到人像，无法进行动作分析。请确保视频中有完整的人体姿态。', 'error', 5000);
+            setIsAnalyzing(false);
+            setExtractionProgress('');
+            return;
+          }
+          
+          setComparisonResult(comparisonResult);
+          setShowVideoComparison(true);
+          setExtractionProgress('');
+        } else {
+          showToast('视频分析失败，请重试', 'error');
+        }
+      } catch (compareError: any) {
+        console.error('对比分析失败:', compareError);
+        // 检查是否是骨骼数据相关的错误
+        const errorMsg = compareError?.message || String(compareError);
+        if (errorMsg.includes('骨骼数据不存在') || errorMsg.includes('pose_data')) {
+          showToast('视频中未检测到人像，无法进行动作分析。请上传包含完整人体姿态的舞蹈视频。', 'error', 5000);
+        } else {
+          showToast('视频分析失败：' + errorMsg, 'error');
+        }
       }
     } catch (err) {
-      setError('分析失败，请检查网络连接');
+      showToast('分析失败，请检查网络连接', 'error');
       console.error('分析失败:', err);
     } finally {
       setIsAnalyzing(false);
+      setExtractionProgress('');
     }
   };
 
@@ -239,17 +349,9 @@ const VideoResult: React.FC = () => {
     navigate(`/video/${id}`);
   };
 
-  const handleRetryUpload = () => {
-    setError(null);
-    // 重新触发上传
-    if (hasRecordedVideo && selectedFile && video) {
-      handleUpload();
-    }
-  };
-
   if (loading) {
     return (
-      <div className="video-result-container">
+      <div className="video-player-container">
         <div className="loading-container">
           <div className="loading-spinner">加载中...</div>
         </div>
@@ -259,7 +361,7 @@ const VideoResult: React.FC = () => {
 
   if (!video) {
     return (
-      <div className="video-result-container">
+      <div className="video-player-container">
         <div className="error-container">
           <div className="error-message">视频不存在</div>
           <button className="btn btn-primary" onClick={handleBackToList}>
@@ -271,20 +373,16 @@ const VideoResult: React.FC = () => {
   }
 
   return (
-    <div className="video-result-container">
+    <div className="video-player-container">
       <div className="controls">
-        <button className="btn btn-secondary" onClick={handleBackToList}>
-          返回列表
-        </button>
-        <button className="btn btn-primary" onClick={handleBackToPlayer}>
-          返回播放器
+        <button className="btn-back" onClick={handleBackToPlayer}>
+          ←
         </button>
       </div>
 
       <div className="result-content">
-        <div className="upload-section">
-          {hasRecordedVideo ? (
-            <div className="video-preview">
+        {hasRecordedVideo ? (
+          <div className="video-preview">
               <h3>您录制的舞蹈视频</h3>
               <div className="video-container">
                 <video
@@ -293,6 +391,8 @@ const VideoResult: React.FC = () => {
                   controls
                   muted
                   autoPlay
+                  playsInline
+                  preload="metadata"
                 />
               </div>
               <div className="video-info">
@@ -315,19 +415,12 @@ const VideoResult: React.FC = () => {
                 >
                   分析视频质量
                 </button>
-                <button
-                  className="btn btn-outline"
-                  onClick={handleReupload}
-                  disabled={uploading || isAnalyzing}
-                >
-                  重新录制
-                </button>
               </div>
             </div>
           ) : isAnalyzing ? (
             <div className="analyzing-status">
               <h3>正在分析视频质量</h3>
-              <div className="loading-spinner">提取骨骼数据中...</div>
+              <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
               <p>请稍候，正在分析您的舞蹈动作...</p>
             </div>
           ) : (
@@ -358,6 +451,8 @@ const VideoResult: React.FC = () => {
                     src={uploadedVideoUrl}
                     controls
                     muted
+                    playsInline
+                    preload="metadata"
                   />
                   
                   <div className="upload-actions">
@@ -368,42 +463,18 @@ const VideoResult: React.FC = () => {
                     >
                       {uploading ? '分析中...' : '开始分析'}
                     </button>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={handleReupload}
-                      disabled={uploading}
-                    >
-                      重新选择
-                    </button>
                   </div>
                 </div>
               )}
 
               {uploading && (
                 <div className="uploading-status">
-                  <div className="loading-spinner">分析中...</div>
+                  <div className="loading-spinner">{extractionProgress || '上传中...'}</div>
                 </div>
               )}
             </div>
           )}
-        </div>
       </div>
-
-      {error && (
-        <div className="error-message">
-          <p>{error}</p>
-          {hasRecordedVideo && (
-            <div className="error-actions">
-              <button className="btn btn-primary" onClick={handleRetryUpload}>
-                重试上传
-              </button>
-              <button className="btn btn-secondary" onClick={handleReupload}>
-                重新录制
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {showVideoComparison && comparisonResult && (
         <VideoComparison
@@ -417,7 +488,7 @@ const VideoResult: React.FC = () => {
         <div className="loading-overlay">
           <div className="loading-content">
             <h3>正在分析视频质量</h3>
-            <div className="loading-spinner">提取骨骼数据中...</div>
+            <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
             <p>请稍候，正在分析您的舞蹈动作...</p>
           </div>
         </div>

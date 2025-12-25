@@ -28,12 +28,15 @@ TOKEN_EXPIRY_DAYS = 365  # Token有效期365天（接近永久）
 default_temp_folder = '/app/temp' if os.path.exists('/app') and os.access('/app', os.W_OK) else 'temp'
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads')
 TEMP_FOLDER = os.environ.get('TEMP_FOLDER', default_temp_folder)
+THUMBNAIL_FOLDER = os.environ.get('THUMBNAIL_FOLDER', 'thumbnails')
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 if not os.path.exists(TEMP_FOLDER):
     os.makedirs(TEMP_FOLDER)
+if not os.path.exists(THUMBNAIL_FOLDER):
+    os.makedirs(THUMBNAIL_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB 限制
@@ -92,6 +95,73 @@ def require_auth(f):
     return decorated_function
 
 # ========== 视频处理函数 ==========
+
+def generate_video_thumbnail(video_path, thumbnail_folder='thumbnails'):
+    """
+    生成视频缩略图（提取第1秒的帧）
+    
+    Args:
+        video_path: 视频文件路径
+        thumbnail_folder: 缩略图保存文件夹
+        
+    Returns:
+        缩略图文件路径，失败返回 None
+    """
+    try:
+        # 确保缩略图文件夹存在
+        if not os.path.exists(thumbnail_folder):
+            os.makedirs(thumbnail_folder)
+        
+        # 打开视频
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"无法打开视频: {video_path}")
+            return None
+        
+        # 获取视频信息
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # 尝试提取第1秒的帧，如果视频太短则提取中间帧
+        target_frame = min(int(fps), total_frames // 2) if fps > 0 else 0
+        
+        # 跳到目标帧
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+        
+        # 读取帧
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret or frame is None:
+            print(f"无法读取视频帧: {video_path}")
+            return None
+        
+        # 生成缩略图文件名（使用视频文件名 + _thumb.jpg）
+        video_basename = os.path.basename(video_path)
+        video_name_without_ext = os.path.splitext(video_basename)[0]
+        thumbnail_filename = f"{video_name_without_ext}_thumb.jpg"
+        thumbnail_path = os.path.join(thumbnail_folder, thumbnail_filename)
+        
+        # 调整图片大小（可选，节省空间和带宽）
+        # 保持宽高比，宽度最大 640px
+        height, width = frame.shape[:2]
+        max_width = 640
+        if width > max_width:
+            scale = max_width / width
+            new_width = max_width
+            new_height = int(height * scale)
+            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        
+        # 保存缩略图
+        cv2.imwrite(thumbnail_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        print(f"缩略图生成成功: {thumbnail_path}")
+        
+        return thumbnail_path
+        
+    except Exception as e:
+        print(f"生成缩略图失败: {str(e)}")
+        traceback.print_exc()
+        return None
 
 def async_extract_poses_and_generate_video(task_id, video_id, filepath, video_type='reference'):
     """异步提取骨骼数据并生成标记骨骼视频"""
@@ -163,7 +233,14 @@ def get_video_duration(video_file):
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     if fps <= 0:
+        cap.release()
         raise ValueError("视频帧率无效")
+    
+    # 处理异常的frame_count（某些格式如webm可能返回负数或极大值）
+    if frame_count < 0 or frame_count > 100000000:  # 超过1亿帧视为异常
+        print(f"警告：检测到异常的frame_count: {frame_count}，尝试使用实际读取方式获取时长")
+        cap.release()
+        raise ValueError(f"无法获取有效的帧数: {frame_count}")
     
     duration = frame_count / fps
     cap.release()
@@ -183,8 +260,18 @@ def get_video_fps(video_file):
     
     return fps
 
-def extract_poses_from_video(video_file, n=5):
-    """从视频中提取姿势数据并返回字典（等距提取，包含无骨骼数据的帧）"""
+def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
+    """
+    从视频中提取姿势数据并返回字典（等距提取，包含无骨骼数据的帧）
+    
+    Args:
+        video_file: 视频文件路径
+        n: 每隔n帧提取一次
+        early_stop_threshold: 如果连续N帧都没有检测到人像，提前终止（0表示不提前终止）
+    
+    Returns:
+        dict: 帧索引到骨骼数据的映射，无骨骼时存储None
+    """
     # 优化后的关键点位 - 只保留舞蹈动作分析最核心的点位
     selected_landmarks = [
         0,  # 鼻子 - 头部位置
@@ -201,14 +288,12 @@ def extract_poses_from_video(video_file, n=5):
         27,  # 左脚踝 - 脚部位置
         28  # 右脚踝 - 脚部位置
     ]
-    
-    # 可选：进一步精简版本（如果性能需要）
-    # selected_landmarks = [0, 11, 12, 15, 16, 23, 24, 27, 28]  # 9个核心点位
 
     mp_pose = mp.solutions.pose
     cap = cv2.VideoCapture(video_file)
     frame_idx = 0
     poses_data = {}
+    consecutive_no_pose = 0  # 连续未检测到人像的帧数
 
     with mp_pose.Pose(static_image_mode=False) as pose:
         while cap.isOpened():
@@ -225,11 +310,23 @@ def extract_poses_from_video(video_file, n=5):
                         if i in selected_landmarks:
                             pose_data.append([lm.x, lm.y, lm.z, lm.visibility])
                     poses_data[frame_idx] = pose_data
+                    consecutive_no_pose = 0  # 重置计数器
                 else:
                     # 没有检测到骨骼数据，存储None作为标记
                     poses_data[frame_idx] = None
+                    consecutive_no_pose += 1
+                    
+                    # 提前终止检查：如果连续多帧没有检测到人像
+                    if early_stop_threshold > 0 and consecutive_no_pose >= early_stop_threshold:
+                        print(f"[提取骨骼] 连续 {consecutive_no_pose} 帧未检测到人像，提前终止提取")
+                        break
             frame_idx += 1
     cap.release()
+    
+    # 打印提取统计信息
+    valid_poses = sum(1 for pose in poses_data.values() if pose is not None)
+    print(f"[提取骨骼] 共处理 {len(poses_data)} 帧，有效骨骼数据 {valid_poses} 帧")
+    
     return poses_data
 
 def generate_pose_video(video_file, output_file, n=5):
@@ -685,8 +782,11 @@ def get_current_user():
 def upload_user_video():
     """上传用户视频并提取骨骼数据（临时缓存）- 需要登录"""
     try:
+        print(f"[上传用户视频] 收到请求")
+        
         # 检查是否有用户视频上传
         if 'user_video' not in request.files:
+            print(f"[上传用户视频] 错误：缺少用户视频文件")
             return jsonify({
                 'success': False,
                 'error': '缺少用户视频文件'
@@ -696,6 +796,7 @@ def upload_user_video():
 
         # 检查文件名
         if user_file.filename == '':
+            print(f"[上传用户视频] 错误：未选择用户视频文件")
             return jsonify({
                 'success': False,
                 'error': '未选择用户视频文件'
@@ -703,6 +804,7 @@ def upload_user_video():
 
         # 检查文件类型
         if not allowed_file(user_file.filename):
+            print(f"[上传用户视频] 错误：不支持的文件格式 {user_file.filename}")
             return jsonify({
                 'success': False,
                 'error': '不支持的用户视频文件格式'
@@ -710,7 +812,10 @@ def upload_user_video():
 
         # 获取参考视频ID
         reference_video_id = request.form.get('reference_video_id')
+        print(f"[上传用户视频] 参考视频ID: {reference_video_id}")
+        
         if not reference_video_id:
+            print(f"[上传用户视频] 错误：缺少参考视频ID")
             return jsonify({
                 'success': False,
                 'error': '缺少参考视频ID'
@@ -719,6 +824,7 @@ def upload_user_video():
         # 验证参考视频是否存在
         reference_video = db.get_video_by_id(reference_video_id, 'reference')
         if not reference_video:
+            print(f"[上传用户视频] 错误：参考视频 {reference_video_id} 不存在")
             return jsonify({
                 'success': False,
                 'error': f'指定的参考视频 {reference_video_id} 不存在'
@@ -737,26 +843,107 @@ def upload_user_video():
             user_file.save(user_path)
 
             # 获取用户视频信息
-            user_duration = get_video_duration(user_path)
-            user_fps = get_video_fps(user_path)
+            try:
+                user_duration = get_video_duration(user_path)
+                user_fps = get_video_fps(user_path)
+            except Exception as video_info_error:
+                print(f"[上传用户视频] 警告：无法获取视频信息: {video_info_error}")
+                # 设置默认值
+                user_duration = 0
+                user_fps = 30.0
+            
+            # 处理异常的duration值（webm格式可能返回极大的负数）
+            if user_duration < 0 or user_duration > 86400:  # 超过24小时视为异常
+                print(f"[上传用户视频] 警告：检测到异常的duration值 {user_duration}，重置为0")
+                user_duration = 0
 
             # 保存用户视频信息到数据库
-            db.add_user_video(user_video_id, user_file.filename, user_path, user_duration, user_fps)
+            db_result = db.add_user_video(user_video_id, user_file.filename, user_path, user_duration, user_fps)
+            
+            if not db_result:
+                print(f"[上传用户视频] 错误：数据库插入失败")
+                return jsonify({
+                    'success': False,
+                    'error': '保存视频信息到数据库失败'
+                }), 500
 
-            # 提取用户视频的骨骼数据
-            print(f"正在提取用户视频 {user_video_id} 的骨骼数据...")
-            user_poses = extract_poses_from_video(
-                user_path, 
-                n=5
-            )
-
-            # 保存用户视频骨骼数据到数据库
-            for frame_idx, pose_data in user_poses.items():
-                db.save_pose_data(user_video_id, 'user', frame_idx, pose_data, frame_idx * 0.2)
-
-
-            # 标记骨骼数据已提取
-            db.update_pose_extraction_status(user_video_id, True)
+            # 立即返回响应，骨骼提取在后台异步进行
+            print(f"用户视频 {user_video_id} 上传成功，准备异步提取骨骼数据...")
+            
+            # 启动后台线程提取骨骼数据
+            import threading
+            def extract_poses_async():
+                extraction_error = None
+                try:
+                    print(f"[后台任务] 开始提取用户视频 {user_video_id} 的骨骼数据...")
+                    
+                    # 更新进度：开始处理
+                    db.update_pose_extraction_progress(user_video_id, 10)
+                    
+                    # 提取骨骼数据
+                    user_poses = extract_poses_from_video(user_path, n=5, early_stop_threshold=50)
+                    
+                    # 更新进度：提取完成
+                    db.update_pose_extraction_progress(user_video_id, 60)
+                    
+                    # 检查是否提取到有效的骨骼数据
+                    valid_poses = sum(1 for pose in user_poses.values() if pose is not None)
+                    total_frames = len(user_poses)
+                    
+                    print(f"[后台任务] 提取结果：total_frames={total_frames}, valid_poses={valid_poses}")
+                    
+                    if total_frames == 0:
+                        extraction_error = "视频处理失败：无法读取视频帧"
+                        print(f"[后台任务] 错误：{extraction_error}")
+                    elif valid_poses == 0:
+                        extraction_error = "视频中未检测到任何人像骨骼数据，请确保视频中有清晰的人物动作"
+                        print(f"[后台任务] 警告：{extraction_error}")
+                    else:
+                        print(f"[后台任务] 提取到 {valid_poses}/{total_frames} 帧有效骨骼数据")
+                    
+                    # 更新进度：保存数据
+                    db.update_pose_extraction_progress(user_video_id, 80)
+                    
+                    # 保存用户视频骨骼数据到数据库（使用批量保存优化性能）
+                    try:
+                        if total_frames > 0:
+                            # 使用批量保存方法（跳过None值）
+                            save_result = db.save_pose_data_batch(user_video_id, 'user', user_poses)
+                            if save_result:
+                                print(f"[后台任务] 批量保存骨骼数据成功")
+                            else:
+                                print(f"[后台任务] 警告：批量保存骨骼数据失败，但继续处理")
+                    except Exception as save_error:
+                        print(f"[后台任务] 保存数据异常: {save_error}")
+                        # 不设置extraction_error，允许继续标记完成
+                    
+                    # 更新进度：完成
+                    db.update_pose_extraction_progress(user_video_id, 100)
+                    
+                    # 标记骨骼数据已提取（记录错误信息）
+                    db.update_pose_extraction_status(user_video_id, True, 'user', extraction_error)
+                    
+                    if extraction_error:
+                        print(f"[后台任务] 用户视频 {user_video_id} 处理完成但有警告: {extraction_error}")
+                    else:
+                        print(f"[后台任务] 用户视频 {user_video_id} 骨骼数据提取完成")
+                        
+                except Exception as e:
+                    extraction_error = f"处理失败: {str(e)}"
+                    print(f"[后台任务] 提取骨骼数据失败: {extraction_error}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # 标记为已提取（失败状态），记录错误信息
+                    try:
+                        db.update_pose_extraction_status(user_video_id, True, 'user', extraction_error)
+                        db.update_pose_extraction_progress(user_video_id, 100)
+                        print(f"[后台任务] 已标记视频 {user_video_id} 为提取完成（失败）")
+                    except Exception as update_error:
+                        print(f"[后台任务] 更新状态失败: {str(update_error)}")
+            
+            thread = threading.Thread(target=extract_poses_async, daemon=True)
+            thread.start()
 
             return jsonify({
                 'success': True,
@@ -765,8 +952,8 @@ def upload_user_video():
                 'filepath': user_path,
                 'duration': user_duration,
                 'fps': user_fps,
-                'pose_data_extracted': True,
-                'message': '用户视频上传成功，骨骼数据已提取'
+                'pose_data_extracted': False,  # 标记为正在提取中
+                'message': '用户视频上传成功，正在后台提取骨骼数据'
             })
 
         except Exception as e:
@@ -775,6 +962,33 @@ def upload_user_video():
             shutil.rmtree(work_dir, ignore_errors=True)
             raise e
 
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/user-video-status/<video_id>', methods=['GET'])
+@require_auth
+def get_user_video_status(video_id):
+    """查询用户视频骨骼数据提取状态"""
+    try:
+        video = db.get_video_by_id(video_id, 'user')
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': '视频不存在'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'user_video_id': video_id,
+            'pose_data_extracted': video.get('pose_data_extracted', False),
+            'pose_extraction_error': video.get('pose_extraction_error'),
+            'pose_extraction_progress': video.get('pose_extraction_progress', 0),
+            'filename': video.get('filename', ''),
+            'duration': video.get('duration', 0)
+        })
     except Exception as e:
         return jsonify({
             'success': False,
@@ -1110,11 +1324,29 @@ def compare_videos():
             user_file.save(user_path)
 
             # 获取用户视频信息
-            user_duration = get_video_duration(user_path)
-            user_fps = get_video_fps(user_path)
+            try:
+                user_duration = get_video_duration(user_path)
+                user_fps = get_video_fps(user_path)
+            except Exception as video_info_error:
+                print(f"[上传用户视频] 警告：无法获取视频信息: {video_info_error}")
+                # 设置默认值
+                user_duration = 0
+                user_fps = 30.0
+            
+            # 处理异常的duration值（webm格式可能返回极大的负数）
+            if user_duration < 0 or user_duration > 86400:  # 超过24小时视为异常
+                print(f"[上传用户视频] 警告：检测到异常的duration值 {user_duration}，重置为0")
+                user_duration = 0
 
             # 保存用户视频信息到数据库
-            db.add_user_video(user_video_id, user_file.filename, user_path, user_duration, user_fps)
+            db_result = db.add_user_video(user_video_id, user_file.filename, user_path, user_duration, user_fps)
+            
+            if not db_result:
+                print(f"[上传用户视频] 错误：数据库插入失败")
+                return jsonify({
+                    'success': False,
+                    'error': '保存视频信息到数据库失败'
+                }), 500
 
             # 检查参考视频是否已有姿势数据
             reference_poses = {}
@@ -1353,6 +1585,9 @@ def upload_reference_video():
         duration = get_video_duration(filepath)
         fps = get_video_fps(filepath)
 
+        # 生成缩略图
+        thumbnail_path = generate_video_thumbnail(filepath, THUMBNAIL_FOLDER)
+
         # 获取可选的描述、标签、作者和标题
         description = request.form.get('description', '')
         tags = request.form.get('tags', '')
@@ -1360,7 +1595,7 @@ def upload_reference_video():
         title = request.form.get('title', '')
 
         # 保存到数据库
-        if not db.add_reference_video(video_id, filename, filepath, duration, fps, description, tags, author, title):
+        if not db.add_reference_video(video_id, filename, filepath, duration, fps, description, tags, author, title, thumbnail_path):
             return jsonify({
                 'success': False,
                 'error': '保存到数据库失败'
@@ -1391,6 +1626,7 @@ def upload_reference_video():
             'tags': tags,
             'author': author,
             'title': title,
+            'thumbnail_path': thumbnail_path,
             'pose_data_extracted': False,
             'pose_video_generated': False,
             'message': '参考视频上传成功，正在后台处理骨骼数据'
@@ -1583,6 +1819,35 @@ def get_video_stats():
                 'total_pose_data': stats['pose_data_count']
             }
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/thumbnail/<video_id>', methods=['GET'])
+def get_thumbnail(video_id):
+    """获取视频缩略图"""
+    try:
+        # 从数据库获取缩略图路径
+        video = db.get_video_by_id(video_id, 'reference')
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': '视频不存在'
+            }), 404
+        
+        thumbnail_path = video.get('thumbnail_path')
+        if not thumbnail_path or not os.path.exists(thumbnail_path):
+            return jsonify({
+                'success': False,
+                'error': '缩略图不存在'
+            }), 404
+        
+        # 返回缩略图文件
+        from flask import send_file
+        return send_file(thumbnail_path, mimetype='image/jpeg')
+        
     except Exception as e:
         return jsonify({
             'success': False,

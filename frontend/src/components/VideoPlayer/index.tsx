@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiService, ReferenceVideo, getVideoUrl } from '../../services/api';
+import { apiService, ReferenceVideo, getVideoUrl, getThumbnailUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
 import './index.less';
@@ -522,7 +522,10 @@ const VideoPlayer: React.FC = () => {
             ref={videoRef}
             className="video-element"
             src={getVideoUrl(video.video_id)}
+            poster={video.thumbnail_path ? getThumbnailUrl(video.video_id) : undefined}
             controls={!isSwapped || !isCameraActive}
+            preload="metadata"
+            playsInline
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
           />
