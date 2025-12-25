@@ -10,82 +10,21 @@
 
 // 主内容区域
 .main-content {
-  margin-top: 70px; // 只有 Header(70px)
-  padding: 20px 20px 80px 20px; // 底部padding给TabBar留空间
   max-width: 1400px;
   margin-left: auto;
   margin-right: auto;
-  min-height: calc(100vh - 70px - 60px); // 减去Header和TabBar高度
-}
-
-// 视频列表容器样式
-.video-list-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-  width: 100%;
-}
-
-// 头部区域样式
-.header-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #f0f0f0;
-}
-
-.header-section h2 {
-  margin: 0;
-  color: #333;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-// 空状态样式
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #666;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 2px dashed #dee2e6;
-  margin: 0 15px;
-}
-
-.empty-state p {
-  font-size: 18px;
-  margin: 0;
-  color: #6c757d;
-}
-
-
-// 录制消息样式
-.recording-message {
-  background: #ffebee;
-  color: #d32f2f;
-  padding: 15px;
-  border-radius: 5px;
-  margin: 10px 0;
-  font-weight: bold;
-  border: 1px solid #ffcdd2;
-  animation: blink 1s infinite;
+  min-height: calc(100vh - 50px - 60px); // 减去Header和TabBar高度
 }
 
 // 移动端适配
 @media (max-width: 768px) {
   .main-content {
-    margin-top: 60px;
-    padding: 15px 15px 70px 15px;
-    min-height: calc(100vh - 60px - 56px);
+    min-height: calc(100vh - 50px - 56px);
   }
 }
 
 @media (max-width: 480px) {
   .main-content {
-    margin-top: 56px;
-    padding: 12px 12px 65px 12px;
-    min-height: calc(100vh - 56px - 52px);
+    min-height: calc(100vh - 50px - 52px);
   }
 } 

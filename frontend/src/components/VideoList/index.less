@@ -1,5 +1,6 @@
 .video-list-container {
   width: 100%;
+  padding: 70px 20px 80px 20px; // 顶部给Header留空间，底部给TabBar留空间
 }
 
 .video-grid {
@@ -201,6 +202,10 @@
 
 // 移动端适配
 @media (max-width: 768px) {
+  .video-list-container {
+    padding: 60px 15px 70px 15px;
+  }
+
   .video-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
@@ -250,6 +255,10 @@
 }
 
 @media (max-width: 480px) {
+  .video-list-container {
+    padding: 56px 12px 65px 12px;
+  }
+
   .video-grid {
     grid-template-columns: 1fr;
     gap: 12px;

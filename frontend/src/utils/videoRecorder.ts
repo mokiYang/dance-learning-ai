@@ -2,6 +2,12 @@ export class VideoRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
   private stream: MediaStream | null = null;
+  // Canvas 录制相关
+  private canvas: HTMLCanvasElement | null = null;
+  private canvasContext: CanvasRenderingContext2D | null = null;
+  private canvasStream: MediaStream | null = null;
+  private sourceVideoElement: HTMLVideoElement | null = null;
+  private animationFrameId: number | null = null;
 
   public async startRecording(): Promise<void> {
     try {
@@ -32,7 +38,6 @@ export class VideoRecorder {
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
-          console.log('使用录制格式:', selectedType);
           break;
         }
       }
@@ -52,34 +57,84 @@ export class VideoRecorder {
       };
 
       this.mediaRecorder.start();
-      console.log('录制已开始');
     } catch (error) {
       console.error('启动录制失败:', error);
       throw error;
     }
   }
 
-  // 新增方法：使用已存在的流进行录制
-  public async startRecordingWithStream(stream: MediaStream): Promise<void> {
+  // 使用 Canvas 从 video 元素捕获并录制
+  public async startRecordingFromVideoElement(videoElement: HTMLVideoElement): Promise<void> {
     try {
-      // 确保清空之前的录制数据
       this.recordedChunks = [];
-      this.stream = stream;
+      this.sourceVideoElement = videoElement;
+      
+      // 创建离屏 Canvas，使用视频元素的实际尺寸
+      this.canvas = document.createElement('canvas');
+      
+      // 使用视频的实际播放尺寸（videoWidth/videoHeight）
+      // 如果视频还没加载完成，等待加载
+      if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+        await new Promise<void>((resolve) => {
+          const checkSize = () => {
+            if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+              resolve();
+            } else {
+              setTimeout(checkSize, 100);
+            }
+          };
+          checkSize();
+        });
+      }
+      
+      // 设置 Canvas 尺寸为视频的实际尺寸
+      this.canvas.width = videoElement.videoWidth;
+      this.canvas.height = videoElement.videoHeight;
+      
+      console.log(`录制 Canvas 尺寸: ${this.canvas.width}x${this.canvas.height}`);
+      
+      this.canvasContext = this.canvas.getContext('2d');
+      
+      if (!this.canvasContext) {
+        throw new Error('无法创建 Canvas 上下文');
+      }
+      
+      // 开始绘制循环
+      const drawFrame = () => {
+        if (!this.canvas || !this.canvasContext || !this.sourceVideoElement) {
+          return;
+        }
+        
+        // 从 video 元素绘制当前帧到 canvas（保持原始尺寸，不裁切）
+        this.canvasContext.drawImage(
+          this.sourceVideoElement,
+          0, 0,
+          this.canvas.width,
+          this.canvas.height
+        );
+        
+        // 继续下一帧
+        this.animationFrameId = requestAnimationFrame(drawFrame);
+      };
+      
+      // 开始绘制
+      drawFrame();
+      
+      // 从 Canvas 捕获流
+      this.canvasStream = this.canvas.captureStream(30); // 30fps
       
       // 检测支持的 MIME 类型
       const supportedTypes = [
         'video/webm',
         'video/webm;codecs=vp8',
         'video/webm;codecs=vp9',
-        'video/mp4',
-        'video/ogg;codecs=theora'
+        'video/mp4'
       ];
       
       let selectedType = '';
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
-          console.log('使用录制格式:', selectedType);
           break;
         }
       }
@@ -88,21 +143,62 @@ export class VideoRecorder {
         throw new Error('浏览器不支持任何可用的录制格式');
       }
       
-      // 创建 MediaRecorder - 使用独立的流副本
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType: selectedType
+      // 使用 Canvas 流创建 MediaRecorder
+      this.mediaRecorder = new MediaRecorder(this.canvasStream, {
+        mimeType: selectedType,
+        videoBitsPerSecond: 2500000 // 2.5 Mbps
       });
 
       this.mediaRecorder.ondataavailable = (event) => {
-        console.log('录制数据可用，大小:', event.data.size);
         if (event.data.size > 0) {
           this.recordedChunks.push(event.data);
         }
       };
 
-      // 开始录制 - 每秒收集一次数据
+      // 开始录制
       this.mediaRecorder.start(1000);
-      console.log('录制已开始，使用独立流副本');
+    } catch (error) {
+      console.error('启动 Canvas 录制失败:', error);
+      throw error;
+    }
+  }
+
+  // 使用已存在的流进行录制
+  public async startRecordingWithStream(stream: MediaStream): Promise<void> {
+    try {
+      this.recordedChunks = [];
+      this.stream = stream;
+      
+      const supportedTypes = [
+        'video/webm',
+        'video/webm;codecs=vp8',
+        'video/webm;codecs=vp9',
+        'video/mp4'
+      ];
+      
+      let selectedType = '';
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          selectedType = type;
+          break;
+        }
+      }
+      
+      if (!selectedType) {
+        throw new Error('浏览器不支持任何可用的录制格式');
+      }
+      
+      this.mediaRecorder = new MediaRecorder(this.stream, {
+        mimeType: selectedType
+      });
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.start(1000);
     } catch (error) {
       console.error('启动录制失败:', error);
       throw error;
@@ -117,18 +213,21 @@ export class VideoRecorder {
       }
 
       this.mediaRecorder.onstop = () => {
-        console.log('录制停止，收集到的数据块数量:', this.recordedChunks.length);
+        // 停止 Canvas 绘制循环
+        if (this.animationFrameId !== null) {
+          cancelAnimationFrame(this.animationFrameId);
+          this.animationFrameId = null;
+        }
+        
+        // 停止 Canvas 流的轨道
+        if (this.canvasStream) {
+          this.canvasStream.getTracks().forEach(track => track.stop());
+          this.canvasStream = null;
+        }
+        
         const blob = new Blob(this.recordedChunks, {
           type: 'video/webm'
         });
-        console.log('最终录制文件大小:', blob.size);
-        
-        // 停止录制流中的所有轨道
-        if (this.stream) {
-          this.stream.getTracks().forEach(track => {
-            track.stop();
-          });
-        }
         
         resolve(blob);
       };
@@ -145,35 +244,45 @@ export class VideoRecorder {
     return this.mediaRecorder?.state === 'recording';
   }
 
-  // 新增：暂停录制
+  // 暂停录制
   public pauseRecording(): void {
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
       this.mediaRecorder.pause();
-      console.log('录制已暂停');
     }
   }
 
-  // 新增：恢复录制
+  // 恢复录制
   public resumeRecording(): void {
     if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
       this.mediaRecorder.resume();
-      console.log('录制已恢复');
     }
   }
 
-  // 新增方法：清理资源
+  // 清理资源
   public cleanup(): void {
-    console.log('清理录制器，清空所有录制数据');
+    // 停止绘制循环
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
     
+    // 停止 MediaRecorder
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
       this.mediaRecorder.stop();
+    }
+    
+    // 停止 Canvas 流
+    if (this.canvasStream) {
+      this.canvasStream.getTracks().forEach(track => track.stop());
+      this.canvasStream = null;
     }
     
     // 清空录制数据
     this.recordedChunks = [];
     this.mediaRecorder = null;
     this.stream = null;
-    
-    console.log('录制器清理完成');
+    this.canvas = null;
+    this.canvasContext = null;
+    this.sourceVideoElement = null;
   }
 } 

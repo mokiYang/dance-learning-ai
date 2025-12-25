@@ -1,48 +1,249 @@
 .video-player-container {
-  max-width: 800px;
-  margin: 0 auto;
+  position: fixed;
+  top: 70px; // Header高度
+  left: 0;
+  right: 0;
+  bottom: 60px; // TabBar高度
+  overflow: hidden;
+  background: #000;
+  z-index: 100;
 }
 
 .controls {
   display: flex;
   gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 15px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+
+  .btn-back {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+  }
+
+  .controls-right {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-action {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+
+    &.btn-success {
+      background: linear-gradient(135deg, #ff6b9d 0%, #ff8a65 100%);
+      color: white;
+
+      &:hover:not(:disabled) {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(255, 107, 157, 0.4);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    &.btn-record-start {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+      color: white;
+      animation: pulse-glow 1.5s infinite;
+
+      &:hover {
+        transform: scale(1.05);
+      }
+    }
+
+    &.btn-warning {
+      background: rgba(255, 193, 7, 0.9);
+      color: #212529;
+
+      &:hover:not(:disabled) {
+        background: rgba(255, 193, 7, 1);
+      }
+    }
+
+    &.btn-danger {
+      background: rgba(220, 53, 69, 0.9);
+      color: white;
+
+      &:hover:not(:disabled) {
+        background: rgba(220, 53, 69, 1);
+      }
+    }
+  }
 
   .btn-login-required {
-    padding: 10px 20px;
+    padding: 8px 16px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
-    border-radius: 6px;
-    font-size: 14px;
+    border-radius: 20px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
 
     &:hover {
-      transform: translateY(-2px);
+      transform: scale(1.05);
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    }
-
-    &:active {
-      transform: translateY(0);
     }
   }
 }
 
-.video-player {
-  width: 100%;
-  height: 100%;
-  border-radius: 10px;
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(255, 107, 107, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.8);
+  }
 }
 
-// 新增样式
 .video-layout {
-  height: 90vh;
-  position: relative;
-  display: inline-block;
+  height: 100%;
   width: 100%;
+  position: relative;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+// 视频容器通用样式
+.video-wrapper {
+  // 作为主区域 - 摄像头或视频全屏显示
+  &.as-main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+
+    .video-element {
+      width: 100%;
+      height: 100%;
+      object-fit: contain !important;
+    }
+  }
+
+  // 作为小窗口 - 右上角小窗显示
+  &.as-overlay {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    width: 180px;
+    height: 320px;
+    z-index: 50;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    background: #000;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      transform: scale(1.05);
+      border-color: #fff;
+      box-shadow: 0 6px 25px rgba(0, 0, 0, 0.6);
+    }
+
+    .video-element {
+      width: 100%;
+      height: 100%;
+      object-fit: contain !important;
+    }
+  }
+
+  // 切换摄像头按钮
+  .btn-switch-camera {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 50px;
+    height: 50px;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    &:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.85);
+      transform: scale(1.08);
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  }
+
+  // 摄像头在主区域时，按钮位置和大小调整
+  &.as-main .btn-switch-camera {
+    bottom: 30px;
+    right: 25px;
+    width: 56px;
+    height: 56px;
+
+    svg {
+      width: 32px;
+      height: 32px;
+    }
+  }
 }
 
 // 全屏倒计时覆盖层样式
@@ -57,35 +258,89 @@
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  animation: pulse 1s infinite;
 }
 
 .fullscreen-countdown-number {
-  font-size: 120px;
+  font-size: 150px;
   font-weight: bold;
   color: #fff;
   text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.7);
   animation: countdownPulse 1s infinite;
 }
 
-.camera-overlay {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 10;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border: 2px solid #fff;
-  background: #333;
+@keyframes countdownPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
 }
 
-.camera-video {
-  display: block;
-  background: #333;
-  border: 2px solid #fff;
-  border-radius: 4px;
-  width: 160px;
-  height: 120px;
-  object-fit: cover;
+// 移动端适配
+@media (max-width: 768px) {
+  .video-player-container {
+    top: 60px; // 移动端Header
+    bottom: 56px; // 移动端TabBar
+  }
+
+  .controls {
+    padding: 8px 12px;
+    gap: 6px;
+
+    .btn-back {
+      width: 32px;
+      height: 32px;
+      font-size: 18px;
+    }
+
+    .btn-action {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .btn-login-required {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+  }
+
+  .video-wrapper.as-overlay {
+    width: 30vw;
+    height: 20vh;
+    top: 55px;
+    right: 10px;
+  }
+
+  .video-wrapper .btn-switch-camera {
+    bottom: 80px;
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .video-player-container {
+    top: 56px; // 小屏Header
+    bottom: 52px; // 小屏TabBar
+  }
+
+  .video-wrapper.as-overlay {
+    top: 50px;
+    width: 35vw;
+    height: 18vh;
+  }
+
+  .controls {
+    .controls-right {
+      gap: 5px;
+    }
+
+    .btn-action, .btn-login-required {
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+  }
 }
