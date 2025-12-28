@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiService, ReferenceVideo, ComparisonResult } from '../../services/api';
-import VideoComparison from '../VideoComparison';
 import { showToast } from '../Toast/ToastContainer';
+import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
 import './index.less';
 
 const VideoResult: React.FC = () => {
@@ -20,10 +20,13 @@ const VideoResult: React.FC = () => {
   const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string>('');
   const [hasRecordedVideo, setHasRecordedVideo] = useState(false);
-  const [showVideoComparison, setShowVideoComparison] = useState(false);
+  // 对比页现在是独立路由，不再使用浮层
+  // const [showVideoComparison, setShowVideoComparison] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState<string>('');
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [videoTitle, setVideoTitle] = useState('');
 
   // 检查是否有传递过来的录制视频数据
   useEffect(() => {
@@ -188,8 +191,9 @@ const VideoResult: React.FC = () => {
           
           console.log('对比分析完成，显示结果界面');
           setComparisonResult(comparisonResult);
-          setShowVideoComparison(true);
           setExtractionProgress('');
+          // 直接跳转到对比页的独立路由
+          navigate(`/comparison/${comparisonResult.work_id}?videoId=${id}`);
         } else {
           showToast('视频分析失败，请重试', 'error');
         }
@@ -212,24 +216,43 @@ const VideoResult: React.FC = () => {
     }
   };
 
+  const handleUploadVideoClick = () => {
+    if (!selectedFile) {
+      showToast('请先选择要上传的视频文件', 'error');
+      return;
+    }
+    setShowUploadForm(true);
+    setVideoTitle('');
+  };
+
+  const handleUploadCancel = () => {
+    setShowUploadForm(false);
+    setVideoTitle('');
+  };
+
   const handleUploadVideo = async () => {
     if (!selectedFile) return;
     
+    if (!videoTitle.trim()) {
+      showToast('请输入视频标题', 'error');
+      return;
+    }
+
     setUploading(true);
 
     try {
-      // 直接上传视频，不进行分析
-      const response = await apiService.uploadReferenceVideo(
+      // 使用上传用户视频到永久存储的API
+      const response = await apiService.uploadUserVideoPermanent(
         selectedFile,
-        '用户上传的舞蹈视频',
-        '用户',
-        selectedFile.name
+        videoTitle.trim()
       );
 
       if (response.success) {
-        showToast('视频上传成功！', 'success');
+        showToast('用户视频上传成功！视频已保存到您的视频列表', 'success', 3000);
+        setShowUploadForm(false);
+        setVideoTitle('');
         // 可以跳转到视频列表页面
-        navigate('/videos');
+        navigate('/?tab=user');
       } else {
         showToast('视频上传失败，请重试', 'error');
       }
@@ -317,8 +340,10 @@ const VideoResult: React.FC = () => {
           }
           
           setComparisonResult(comparisonResult);
-          setShowVideoComparison(true);
           setExtractionProgress('');
+          setIsAnalyzing(false);
+          // 直接跳转到对比页的独立路由，传递视频ID以便返回时使用
+          navigate(`/comparison/${comparisonResult.work_id}?videoId=${id}`);
         } else {
           showToast('视频分析失败，请重试', 'error');
         }
@@ -349,138 +374,180 @@ const VideoResult: React.FC = () => {
     navigate(`/video/${id}`);
   };
 
-  if (loading) {
-    return (
-      <div className="video-player-container">
-        <div className="loading-container">
-          <div className="loading-spinner">加载中...</div>
-        </div>
-      </div>
+  // 构建右侧按钮配置
+  const rightButtons: ControlButton[] = [];
+  
+  if (hasRecordedVideo) {
+    rightButtons.push(
+      {
+        label: '投稿',
+        className: 'btn-success',
+        onClick: handleUploadVideoClick,
+        disabled: uploading || isAnalyzing,
+        visible: true,
+      },
+      {
+        label: '分析视频质量',
+        className: 'btn-warning',
+        onClick: handleAnalyzeQuality,
+        disabled: uploading || isAnalyzing,
+        visible: true,
+      }
     );
   }
 
-  if (!video) {
-    return (
-      <div className="video-player-container">
-        <div className="error-container">
-          <div className="error-message">视频不存在</div>
-          <button className="btn btn-primary" onClick={handleBackToList}>
-            返回列表
+  // 渲染视频内容
+  const renderVideoContent = () => {
+    if (hasRecordedVideo) {
+      return null; // BaseVideoPlayer 会渲染视频
+    } else if (isAnalyzing) {
+      return (
+        <div className="analyzing-status">
+          <h3>正在分析视频质量</h3>
+          <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
+          <p>请稍候，正在分析您的舞蹈动作...</p>
+        </div>
+      );
+    } else {
+      return (
+        <div className="upload-area">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+          
+          <button
+            className="btn btn-primary upload-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            选择视频文件
           </button>
-        </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="video-player-container">
-      <div className="controls">
-        <button className="btn-back" onClick={handleBackToPlayer}>
-          ←
-        </button>
-      </div>
-
-      <div className="result-content">
-        {hasRecordedVideo ? (
-          <div className="video-preview">
-              <h3>您录制的舞蹈视频</h3>
-              <div className="video-container">
-                <video
-                  className="preview-video"
-                  src={recordedVideoUrl}
-                  controls
-                  muted
-                  autoPlay
-                  playsInline
-                  preload="metadata"
-                />
-              </div>
-              <div className="video-info">
-                <p>文件大小: {(recordedVideoBlob?.size ? recordedVideoBlob.size / 1024 / 1024 : 0).toFixed(2)} MB</p>
-                <p>格式: {recordedVideoBlob?.type || 'video/webm'}</p>
-              </div>
+          {selectedFile && (
+            <div className="selected-file">
+              <p>已选择文件: {selectedFile.name}</p>
+              <p>文件大小: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
               
-              <div className="action-buttons">
-                <button
-                  className="btn btn-primary"
-                  onClick={handleUploadVideo}
-                  disabled={uploading || isAnalyzing}
-                >
-                  上传视频
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleAnalyzeQuality}
-                  disabled={uploading || isAnalyzing}
-                >
-                  分析视频质量
-                </button>
-              </div>
-            </div>
-          ) : isAnalyzing ? (
-            <div className="analyzing-status">
-              <h3>正在分析视频质量</h3>
-              <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
-              <p>请稍候，正在分析您的舞蹈动作...</p>
-            </div>
-          ) : (
-            <div className="upload-area">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
+              <video
+                className="preview-video"
+                src={uploadedVideoUrl}
+                controls
+                muted
+                playsInline
+                preload="metadata"
               />
               
-              <button
-                className="btn btn-primary upload-btn"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                选择视频文件
-              </button>
-
-              {selectedFile && (
-                <div className="selected-file">
-                  <p>已选择文件: {selectedFile.name}</p>
-                  <p>文件大小: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                  
-                  <video
-                    className="preview-video"
-                    src={uploadedVideoUrl}
-                    controls
-                    muted
-                    playsInline
-                    preload="metadata"
-                  />
-                  
-                  <div className="upload-actions">
-                    <button
-                      className="btn btn-success"
-                      onClick={handleUpload}
-                      disabled={uploading}
-                    >
-                      {uploading ? '分析中...' : '开始分析'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {uploading && (
-                <div className="uploading-status">
-                  <div className="loading-spinner">{extractionProgress || '上传中...'}</div>
-                </div>
-              )}
+              <div className="upload-actions">
+                <button
+                  className="btn btn-success"
+                  onClick={handleUpload}
+                  disabled={uploading}
+                >
+                  {uploading ? '分析中...' : '开始分析'}
+                </button>
+              </div>
             </div>
           )}
-      </div>
 
-      {showVideoComparison && comparisonResult && (
-        <VideoComparison
-          workId={comparisonResult.work_id}
-          onClose={() => setShowVideoComparison(false)}
+          {uploading && (
+            <div className="uploading-status">
+              <div className="loading-spinner">{extractionProgress || '上传中...'}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+  };
+
+  return (
+    <>
+      {hasRecordedVideo ? (
+        <BaseVideoPlayer
+          videoSrc={recordedVideoUrl}
+          onBack={handleBackToPlayer}
+          rightButtons={rightButtons}
+          loading={loading}
+          error={!video ? '视频不存在' : null}
+          videoProps={{
+            muted: true,
+            autoPlay: true,
+            playsInline: true,
+            preload: 'metadata',
+          }}
         />
+      ) : (
+        <div className="video-player-container">
+          <div className="controls">
+            <button className="btn-back" onClick={handleBackToPlayer}>
+              ←
+            </button>
+          </div>
+          <div className="video-layout">
+            {renderVideoContent()}
+          </div>
+        </div>
+      )}
+
+      {/* 对比页现在是独立路由，不再使用浮层 */}
+
+      {/* 上传表单弹窗 */}
+      {showUploadForm && (
+        <div className="upload-form-overlay" onClick={handleUploadCancel}>
+          <div className="upload-form" onClick={(e) => e.stopPropagation()}>
+            <div className="form-header">
+              <h3>上传用户视频</h3>
+              <button className="close-button" onClick={handleUploadCancel}>
+                ×
+              </button>
+            </div>
+
+            <div className="form-content">
+              <div className="form-group">
+                <label htmlFor="video-title">视频标题 *</label>
+                <input
+                  id="video-title"
+                  type="text"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                  placeholder="请输入视频标题"
+                  required
+                  autoFocus
+                />
+              </div>
+              
+              <div className="form-actions">
+                <button
+                  className="cancel-button"
+                  onClick={handleUploadCancel}
+                  disabled={uploading}
+                >
+                  取消
+                </button>
+                <button
+                  className="submit-button"
+                  onClick={handleUploadVideo}
+                  disabled={uploading || !videoTitle.trim()}
+                >
+                  {uploading ? (
+                    <>
+                      <span className="upload-icon">⏳</span>
+                      上传中...
+                    </>
+                  ) : (
+                    <>
+                      <span className="upload-icon">📤</span>
+                      确认上传
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 浮层loading */}
@@ -493,7 +560,7 @@ const VideoResult: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

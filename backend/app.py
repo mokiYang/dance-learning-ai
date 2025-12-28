@@ -96,6 +96,158 @@ def require_auth(f):
 
 # ========== 视频处理函数 ==========
 
+def convert_video_to_standard_format(input_video_path, output_video_path=None):
+    """
+    将视频转换为标准格式（MP4 H.264），便于AI处理
+    注意：转换后的视频是临时文件，仅用于骨骼提取，提取完成后应删除
+    
+    Args:
+        input_video_path: 输入视频文件路径（原始文件，会保留）
+        output_video_path: 输出视频文件路径（如果为None，则自动生成临时文件）
+        
+    Returns:
+        转换后的视频文件路径，失败返回None（如果输入文件已经是mp4，可能返回原文件路径）
+    """
+    import subprocess
+    
+    try:
+        # 检查输入文件是否存在
+        if not os.path.exists(input_video_path):
+            print(f"[格式转换] 错误：输入文件不存在: {input_video_path}")
+            return None
+        
+        # 检查文件扩展名，如果已经是mp4且可能是标准格式，先检查是否需要转换
+        input_ext = os.path.splitext(input_video_path)[1].lower()
+        
+        # 如果输出路径未指定，自动生成临时文件路径
+        if output_video_path is None:
+            video_dir = os.path.dirname(input_video_path)
+            video_basename = os.path.basename(input_video_path)
+            video_name_without_ext = os.path.splitext(video_basename)[0]
+            # 使用临时文件名，明确标识这是临时文件
+            output_video_path = os.path.join(video_dir, f"{video_name_without_ext}_temp_for_pose_extraction.mp4")
+        
+        # 如果输出文件已存在，先删除
+        if os.path.exists(output_video_path):
+            os.remove(output_video_path)
+        
+        print(f"[格式转换] 开始转换视频: {input_video_path} -> {output_video_path}")
+        
+        # 检查ffmpeg是否可用
+        try:
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5, check=True)
+        except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            print(f"[格式转换] 警告：ffmpeg不可用，尝试使用原始文件")
+            # 如果ffmpeg不可用，且输入文件已经是mp4，直接返回原文件路径
+            if input_ext == '.mp4':
+                print(f"[格式转换] 输入文件已是mp4格式，跳过转换")
+                return input_video_path
+            else:
+                print(f"[格式转换] 错误：ffmpeg不可用且输入文件不是mp4格式")
+                return None
+        
+        # 获取原始视频的帧率（重要：保持原始帧率，避免播放速度异常）
+        try:
+            original_fps = get_video_fps(input_video_path)
+            print(f"[格式转换] 原始视频帧率: {original_fps} FPS")
+        except Exception as fps_error:
+            print(f"[格式转换] 警告：无法获取原始帧率: {fps_error}，使用默认值30 FPS")
+            original_fps = 30.0
+        
+        # 使用ffmpeg转换为标准MP4 H.264格式
+        # 参数说明：
+        # -y: 覆盖输出文件
+        # -i: 输入文件
+        # -c:v libx264: 使用H.264视频编码
+        # -r: 保持原始帧率（关键！避免播放速度异常）
+        # -preset fast: 快速编码（平衡速度和质量）
+        # -crf 23: 质量参数（18-28，值越小质量越高，23是默认值）
+        # -pix_fmt yuv420p: 像素格式（浏览器兼容）
+        # -c:a aac: 音频编码为AAC（如果存在音频）
+        # -b:a 128k: 音频比特率
+        # -movflags +faststart: 优化流媒体播放（将元数据移到文件开头）
+        # -avoid_negative_ts make_zero: 处理时间戳问题
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_video_path,
+            '-c:v', 'libx264',
+            '-r', str(original_fps),  # 保持原始帧率（关键！）
+            '-preset', 'fast',
+            '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', '+faststart',
+            '-avoid_negative_ts', 'make_zero',
+            output_video_path
+        ]
+        
+        print(f"[格式转换] 执行命令: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10分钟超时
+        
+        if result.returncode != 0:
+            print(f"[格式转换] 错误：ffmpeg转换失败")
+            print(f"[格式转换] stderr: {result.stderr}")
+            # 如果转换失败，且输入文件已经是mp4，返回原文件路径
+            if input_ext == '.mp4':
+                print(f"[格式转换] 转换失败，但输入文件已是mp4格式，使用原文件")
+                return input_video_path
+            return None
+        
+        # 验证输出文件
+        if not os.path.exists(output_video_path):
+            print(f"[格式转换] 错误：输出文件未生成: {output_video_path}")
+            if input_ext == '.mp4':
+                return input_video_path
+            return None
+        
+        output_size = os.path.getsize(output_video_path)
+        if output_size == 0:
+            print(f"[格式转换] 错误：输出文件为空")
+            os.remove(output_video_path)
+            if input_ext == '.mp4':
+                return input_video_path
+            return None
+        
+        # 验证视频文件是否可以正常打开
+        cap = cv2.VideoCapture(output_video_path)
+        if not cap.isOpened():
+            print(f"[格式转换] 警告：转换后的视频无法用OpenCV打开")
+            cap.release()
+            if input_ext == '.mp4':
+                return input_video_path
+            return None
+        
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            print(f"[格式转换] 警告：转换后的视频无法读取帧")
+            if input_ext == '.mp4':
+                return input_video_path
+            return None
+        
+        print(f"[格式转换] 转换成功: {output_video_path} (大小: {output_size} 字节)")
+        print(f"[格式转换] 注意：转换后的文件是临时文件，仅用于骨骼提取，提取完成后应删除")
+        
+        # 原始文件保留，用于播放
+        return output_video_path
+        
+    except subprocess.TimeoutExpired:
+        print(f"[格式转换] 错误：转换超时")
+        # 如果转换超时，且输入文件已经是mp4，返回原文件路径
+        input_ext = os.path.splitext(input_video_path)[1].lower()
+        if input_ext == '.mp4':
+            return input_video_path
+        return None
+    except Exception as e:
+        print(f"[格式转换] 错误：转换失败: {str(e)}")
+        traceback.print_exc()
+        # 如果转换失败，且输入文件已经是mp4，返回原文件路径
+        input_ext = os.path.splitext(input_video_path)[1].lower()
+        if input_ext == '.mp4':
+            return input_video_path
+        return None
+
 def generate_video_thumbnail(video_path, thumbnail_folder='thumbnails'):
     """
     生成视频缩略图（提取第1秒的帧）
@@ -163,17 +315,27 @@ def generate_video_thumbnail(video_path, thumbnail_folder='thumbnails'):
         traceback.print_exc()
         return None
 
-def async_extract_poses_and_generate_video(task_id, video_id, filepath, video_type='reference'):
+def async_extract_poses_and_generate_video(task_id, video_id, original_filepath, video_type='reference'):
     """异步提取骨骼数据并生成标记骨骼视频"""
+    converted_video_path = None  # 转换后的临时文件路径
     try:
         print(f"[任务 {task_id}] 开始处理视频 {video_id}")
         
         # 更新任务状态为处理中
         db.update_task_status(task_id, 'processing', progress=10)
         
-        # 提取骨骼数据
+        # 转换为标准格式（临时文件，仅用于骨骼提取）
+        print(f"[任务 {task_id}] 转换视频格式用于骨骼提取...")
+        converted_video_path = convert_video_to_standard_format(original_filepath)
+        if converted_video_path is None:
+            print(f"[任务 {task_id}] 警告：格式转换失败，使用原始文件")
+            converted_video_path = original_filepath
+        elif converted_video_path != original_filepath:
+            print(f"[任务 {task_id}] 格式转换成功: {converted_video_path}")
+        
+        # 提取骨骼数据（使用转换后的临时视频）
         print(f"[任务 {task_id}] 正在提取骨骼数据...")
-        poses_data = extract_poses_from_video(filepath, n=5)
+        poses_data = extract_poses_from_video(converted_video_path, n=5)
         
         db.update_task_status(task_id, 'processing', progress=50)
         print(f"[任务 {task_id}] 提取到 {len(poses_data)} 帧骨骼数据")
@@ -200,8 +362,8 @@ def async_extract_poses_and_generate_video(task_id, video_id, filepath, video_ty
             os.makedirs(output_dir, exist_ok=True)
             pose_video_path = os.path.join(output_dir, "pose_video.mp4")
             
-            # 生成标记骨骼视频
-            generate_pose_video(filepath, pose_video_path, n=5)
+            # 生成标记骨骼视频（使用转换后的临时视频，如果转换失败则使用原始视频）
+            generate_pose_video(converted_video_path, pose_video_path, n=5)
             
             db.update_task_status(task_id, 'processing', progress=90)
             
@@ -220,45 +382,119 @@ def async_extract_poses_and_generate_video(task_id, video_id, filepath, video_ty
         error_msg = f"处理失败: {str(e)}\n{traceback.format_exc()}"
         print(f"[任务 {task_id}] {error_msg}")
         db.update_task_status(task_id, 'failed', error_message=error_msg)
+    finally:
+        # 确保删除转换后的临时文件（如果存在且不是原始文件）
+        if converted_video_path and converted_video_path != original_filepath and os.path.exists(converted_video_path):
+            try:
+                os.remove(converted_video_path)
+                print(f"[任务 {task_id}] 已删除临时转换文件: {converted_video_path}")
+            except Exception as delete_error:
+                print(f"[任务 {task_id}] 警告：删除临时转换文件失败: {delete_error}")
 
 
 
 def get_video_duration(video_file):
-    """获取视频时长（秒）"""
+    """获取视频时长（秒）- 优先使用 ffprobe，回退到 OpenCV"""
+    import subprocess
+    import json
+    
+    # 首先尝试使用 ffprobe（对 webm 格式更可靠）
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'json',
+            video_file
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            duration = float(data.get('format', {}).get('duration', 0))
+            if duration > 0:
+                print(f"使用 ffprobe 获取视频时长: {duration:.2f}秒")
+                return duration
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, subprocess.TimeoutExpired) as e:
+        print(f"ffprobe 获取时长失败，使用 OpenCV: {e}")
+    
+    # 回退到 OpenCV 方法
     cap = cv2.VideoCapture(video_file)
     if not cap.isOpened():
         raise ValueError("无法打开视频文件")
     
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    if fps <= 0:
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # 如果 OpenCV 无法获取有效信息，尝试通过实际读取帧来计算
+        if fps <= 0 or frame_count <= 0 or frame_count > 100000000:
+            print(f"警告：OpenCV 无法获取有效信息 (fps={fps}, frames={frame_count})，尝试实际读取")
+            # 通过实际读取帧来计算时长
+            frame_count = 0
+            while True:
+                ret, _ = cap.read()
+                if not ret:
+                    break
+                frame_count += 1
+            
+            # 重新打开视频获取 fps
+            cap.release()
+            cap = cv2.VideoCapture(video_file)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30.0  # 默认帧率
+        
+        if frame_count <= 0:
+            cap.release()
+            raise ValueError("无法获取视频帧数")
+        
+        duration = frame_count / fps
+        print(f"使用 OpenCV 获取视频时长: {duration:.2f}秒 (frames={frame_count}, fps={fps})")
+        return duration
+    finally:
         cap.release()
-        raise ValueError("视频帧率无效")
-    
-    # 处理异常的frame_count（某些格式如webm可能返回负数或极大值）
-    if frame_count < 0 or frame_count > 100000000:  # 超过1亿帧视为异常
-        print(f"警告：检测到异常的frame_count: {frame_count}，尝试使用实际读取方式获取时长")
-        cap.release()
-        raise ValueError(f"无法获取有效的帧数: {frame_count}")
-    
-    duration = frame_count / fps
-    cap.release()
-    return duration
 
 def get_video_fps(video_file):
-    """获取视频帧率"""
+    """获取视频帧率 - 优先使用 ffprobe，回退到 OpenCV"""
+    import subprocess
+    import json
+    
+    # 首先尝试使用 ffprobe（对 webm 格式更可靠）
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=r_frame_rate',
+            '-of', 'json',
+            video_file
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            streams = data.get('streams', [])
+            if streams:
+                frame_rate_str = streams[0].get('r_frame_rate', '')
+                if frame_rate_str and '/' in frame_rate_str:
+                    num, den = map(int, frame_rate_str.split('/'))
+                    if den > 0:
+                        fps = num / den
+                        print(f"使用 ffprobe 获取视频帧率: {fps:.2f} FPS")
+                        return fps
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, subprocess.TimeoutExpired, IndexError, ZeroDivisionError, KeyError) as e:
+        print(f"ffprobe 获取帧率失败，使用 OpenCV: {e}")
+    
+    # 回退到 OpenCV 方法
     cap = cv2.VideoCapture(video_file)
     if not cap.isOpened():
         raise ValueError("无法打开视频文件")
     
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    cap.release()
-    
-    if fps <= 0:
-        raise ValueError("视频帧率无效")
-    
-    return fps
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 30.0  # 默认帧率
+        print(f"使用 OpenCV 获取视频帧率: {fps:.2f} FPS")
+        return fps
+    finally:
+        cap.release()
 
 def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
     """
@@ -332,8 +568,6 @@ def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
 def generate_pose_video(video_file, output_file, n=5):
     """生成标记骨骼的视频（带音频）"""
     import subprocess
-    import tempfile
-    import os
     
     # 使用相同的13个关键点
     selected_landmarks = [
@@ -356,17 +590,124 @@ def generate_pose_video(video_file, output_file, n=5):
     mp_drawing = mp.solutions.drawing_utils
     
     cap = cv2.VideoCapture(video_file)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if not cap.isOpened():
+        raise Exception(f"无法打开视频文件: {video_file}")
+    
+    try:
+        # 优先使用 get_video_fps 函数（使用 ffprobe，更准确）
+        # 这对于某些格式（如 webm）的原始视频特别重要
+        try:
+            fps = get_video_fps(video_file)
+            print(f"[生成骨骼视频] 使用 get_video_fps 获取帧率: {fps:.2f} FPS")
+        except Exception as fps_error:
+            print(f"[生成骨骼视频] get_video_fps 失败，使用 OpenCV: {fps_error}")
+            # 回退到 OpenCV 方法
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            import math
+            if math.isnan(fps) or fps <= 0:
+                fps = 30.0  # 默认帧率
+                print(f"[生成骨骼视频] OpenCV 无法获取帧率，使用默认值: {fps} FPS")
+        
+        width_raw = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height_raw = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        
+        # 安全地转换为整数，处理 NaN 和无效值
+        import math
+        if math.isnan(width_raw) or width_raw <= 0:
+            width = 640  # 默认宽度
+        else:
+            width = int(width_raw)
+        if math.isnan(height_raw) or height_raw <= 0:
+            height = 480  # 默认高度
+        else:
+            height = int(height_raw)
+        
+        # 验证视频参数
+        if width <= 0 or height <= 0:
+            cap.release()
+            raise Exception(f"视频参数无效: fps={fps}, width={width}, height={height}")
+    except Exception as e:
+        cap.release()
+        raise Exception(f"获取视频参数失败: {str(e)}")
     
     # 创建临时视频文件（无音频）
-    import uuid
     temp_video = os.path.join(TEMP_FOLDER, f"temp_{uuid.uuid4().hex}_video.mp4")
     
-    # 创建视频写入器 - 使用更兼容的编码格式
-    fourcc = cv2.VideoWriter_fourcc(*'H264')
-    out = cv2.VideoWriter(temp_video, fourcc, fps, (width, height))
+    # 确保临时目录存在
+    os.makedirs(TEMP_FOLDER, exist_ok=True)
+    
+    # 尝试多种编码格式，按兼容性排序
+    codecs_to_try = [
+        ('mp4v', 'mp4v'),  # MPEG-4 Part 2，最兼容
+        ('XVID', 'XVID'),  # Xvid MPEG-4
+        ('avc1', 'avc1'),  # H.264 (avc1)
+        ('H264', 'H264'),  # H.264 (H264)
+    ]
+    
+    out = None
+    used_codec = None
+    
+    # 尝试创建视频写入器
+    for codec_name, fourcc_str in codecs_to_try:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
+            out = cv2.VideoWriter(temp_video, fourcc, fps, (width, height))
+            
+            # 检查是否成功初始化
+            if out.isOpened():
+                used_codec = codec_name
+                print(f"成功使用 {codec_name} 编码器创建视频写入器")
+                break
+            else:
+                out.release()
+                out = None
+                print(f"警告: {codec_name} 编码器初始化失败")
+        except Exception as e:
+            print(f"警告: 尝试使用 {codec_name} 编码器时出错: {e}")
+            if out:
+                out.release()
+                out = None
+    
+    # 如果所有编码器都失败，尝试使用 ffmpeg 转换格式
+    if out is None or not out.isOpened():
+        print("警告: 所有 OpenCV 编码器都失败，尝试使用 ffmpeg 转换视频格式")
+        try:
+            # 检查 ffmpeg 是否可用
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5, check=True)
+            
+            # 使用 ffmpeg 将原视频转换为 mp4 格式（无骨骼标记，但至少格式正确）
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_file,
+                '-c:v', 'libx264',  # 使用 H.264 编码
+                '-preset', 'fast',  # 快速编码
+                '-crf', '23',  # 质量参数
+                '-c:a', 'aac',  # 音频编码
+                '-movflags', '+faststart',  # 优化流媒体播放
+                output_file
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print("警告: 使用 ffmpeg 转换视频格式成功（无骨骼标记）")
+                return output_file
+            else:
+                print(f"FFmpeg转换失败: {result.stderr}")
+                # 如果 ffmpeg 转换失败，不能直接复制原视频（可能是 webm 格式）
+                # 因为输出文件名是 .mp4，但内容可能是 webm，会导致浏览器无法播放
+                raise Exception(f"FFmpeg转换失败，无法生成视频文件: {result.stderr}")
+        except FileNotFoundError:
+            print("警告: FFmpeg未找到，无法转换视频格式")
+            # 如果 ffmpeg 不可用，不能直接复制原视频（可能是 webm 格式）
+            # 因为输出文件名是 .mp4，但内容可能是 webm，会导致浏览器无法播放
+            # 所以这里应该抛出异常，提示需要安装 ffmpeg
+            raise Exception("FFmpeg未安装，无法生成视频文件。请安装 ffmpeg 或使用 Docker 环境。")
+        except subprocess.TimeoutExpired:
+            print("警告: FFmpeg检查超时，无法转换视频格式")
+            raise Exception("FFmpeg检查超时，无法生成视频文件")
+        except Exception as e:
+            print(f"警告: 视频转换失败: {e}")
+            # 不能直接复制原视频（可能是 webm 格式），因为输出文件名是 .mp4
+            raise Exception(f"无法生成视频文件: {str(e)}")
     
     frame_idx = 0
     
@@ -415,42 +756,136 @@ def generate_pose_video(video_file, output_file, n=5):
     cap.release()
     out.release()
     
-    # 使用ffmpeg合并视频和音频
+    # 检查临时文件是否成功创建
+    if not os.path.exists(temp_video):
+        print(f"错误: 临时视频文件未创建: {temp_video}")
+        raise Exception(f"无法创建临时视频文件，使用的编码器: {used_codec}")
+    
+    # 使用ffmpeg合并视频和音频，并确保使用浏览器兼容的格式
     try:
+        # 确保临时文件存在
+        if not os.path.exists(temp_video):
+            raise Exception(f"临时视频文件不存在: {temp_video}")
+        
+        # 检查临时视频文件大小
+        temp_size = os.path.getsize(temp_video)
+        if temp_size == 0:
+            raise Exception(f"临时视频文件为空: {temp_video}")
+        
+        # 使用 ffmpeg 重新编码为浏览器兼容的 H.264 格式
+        # 重要：必须保持原始帧率，否则会导致播放速度异常
         cmd = [
             'ffmpeg', '-y',  # -y 覆盖输出文件
             '-i', temp_video,  # 输入视频（无音频）
             '-i', video_file,  # 输入原视频（有音频）
-            '-c:v', 'copy',  # 复制视频流
+            '-c:v', 'libx264',  # 使用 H.264 编码（浏览器兼容）
+            '-r', str(fps),  # 保持原始帧率（关键！）
+            '-preset', 'fast',  # 快速编码
+            '-crf', '23',  # 质量参数
+            '-pix_fmt', 'yuv420p',  # 像素格式（浏览器兼容）
             '-c:a', 'aac',  # 音频编码为AAC
+            '-b:a', '128k',  # 音频比特率
             '-map', '0:v:0',  # 使用第一个输入的视频流
-            '-map', '1:a:0',  # 使用第二个输入的音频流
+            '-map', '1:a:0?',  # 使用第二个输入的音频流（如果存在）
             '-shortest',  # 以较短的流为准
+            '-movflags', '+faststart',  # 优化流媒体播放
             output_file
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             print(f"FFmpeg错误: {result.stderr}")
-            # 如果ffmpeg失败，使用无音频版本
-            import shutil
-            shutil.copy2(temp_video, output_file)
+            # 如果合并失败，尝试只重新编码视频（无音频）
+            print("尝试重新编码视频（无音频）...")
+            cmd_no_audio = [
+                'ffmpeg', '-y',
+                '-i', temp_video,
+                '-c:v', 'libx264',
+                '-r', str(fps),  # 保持原始帧率（关键！）
+                '-preset', 'fast',
+                '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-movflags', '+faststart',
+                output_file
+            ]
+            result_no_audio = subprocess.run(cmd_no_audio, capture_output=True, text=True, timeout=300)
+            if result_no_audio.returncode != 0:
+                print(f"FFmpeg重新编码失败: {result_no_audio.stderr}")
+                # 如果重新编码也失败，使用原始临时文件（可能不兼容）
+                if os.path.exists(temp_video):
+                    shutil.copy2(temp_video, output_file)
+                    print("警告: 使用原始临时文件（可能不兼容）")
+                else:
+                    raise Exception(f"临时视频文件不存在且ffmpeg失败: {temp_video}")
+            else:
+                print("成功重新编码视频（无音频）")
         else:
             print("成功添加音频到生成的视频")
     except FileNotFoundError:
         print("FFmpeg未找到，生成无音频版本")
         # 如果ffmpeg不可用，使用无音频版本
-        import shutil
-        shutil.copy2(temp_video, output_file)
+        if os.path.exists(temp_video):
+            shutil.copy2(temp_video, output_file)
+        else:
+            raise Exception(f"临时视频文件不存在且ffmpeg未安装: {temp_video}")
+    except subprocess.TimeoutExpired:
+        print("FFmpeg处理超时，使用无音频版本")
+        if os.path.exists(temp_video):
+            shutil.copy2(temp_video, output_file)
+        else:
+            raise Exception(f"临时视频文件不存在且ffmpeg超时: {temp_video}")
     except Exception as e:
         print(f"音频处理失败: {e}")
         # 如果出现其他错误，使用无音频版本
-        import shutil
-        shutil.copy2(temp_video, output_file)
+        if os.path.exists(temp_video):
+            shutil.copy2(temp_video, output_file)
+            print("使用无音频版本（处理失败）")
+        else:
+            raise Exception(f"临时视频文件不存在: {temp_video}, 错误: {str(e)}")
     finally:
         # 清理临时文件
         if os.path.exists(temp_video):
-            os.remove(temp_video)
+            try:
+                os.remove(temp_video)
+            except Exception as e:
+                print(f"警告: 清理临时文件失败: {e}")
+    
+    # 验证生成的视频文件是否有效
+    if not os.path.exists(output_file):
+        raise Exception(f"生成的视频文件不存在: {output_file}")
+    
+    file_size = os.path.getsize(output_file)
+    if file_size == 0:
+        raise Exception(f"生成的视频文件为空: {output_file}")
+    
+    # 使用 OpenCV 验证视频文件是否可以正常打开和读取
+    try:
+        cap = cv2.VideoCapture(output_file)
+        if not cap.isOpened():
+            raise Exception(f"无法打开生成的视频文件: {output_file}")
+        
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret or frame is None:
+            raise Exception(f"生成的视频文件无法读取帧: {output_file}")
+        
+        print(f"视频文件验证成功: {output_file}, 大小: {file_size} 字节")
+    except Exception as validation_error:
+        # 如果验证失败，尝试使用 ffprobe 验证
+        try:
+            import subprocess
+            cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=format_name', '-of', 'json', output_file]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                raise Exception(f"ffprobe 验证失败: {result.stderr}")
+            print(f"使用 ffprobe 验证成功: {output_file}")
+        except FileNotFoundError:
+            # 如果 ffprobe 不可用，但 OpenCV 验证失败，仍然抛出错误
+            raise validation_error
+        except Exception as ffprobe_error:
+            # 如果两种验证都失败，抛出错误
+            raise Exception(f"视频文件验证失败: {str(validation_error)}, ffprobe: {str(ffprobe_error)}")
     
     return output_file
 
@@ -519,7 +954,8 @@ def calculate_pose_difference(pose1, pose2):
         return -1  # 使用-1表示无骨骼数据
     
     if len(pose1) != len(pose2):
-        return float('inf')
+        # 返回一个很大的数字而不是 Infinity，以便 JSON 序列化
+        return 999999.0
 
     total_diff = 0
     valid_points = 0
@@ -538,10 +974,12 @@ def calculate_pose_difference(pose1, pose2):
 
     # 如果有效点太少，认为骨骼提取质量差
     if valid_points < len(pose1) * 0.6:  # 至少需要60%的关键点可见
-        return float('inf')
+        # 返回一个很大的数字而不是 Infinity，以便 JSON 序列化
+        return 999999.0
 
     if valid_points == 0:
-        return float('inf')
+        # 返回一个很大的数字而不是 Infinity，以便 JSON 序列化
+        return 999999.0
 
     return total_diff / valid_points
 
@@ -838,14 +1276,14 @@ def upload_user_video():
         os.makedirs(work_dir, exist_ok=True)
 
         try:
-            # 保存用户上传的文件
-            user_path = os.path.join(work_dir, secure_filename(user_file.filename))
-            user_file.save(user_path)
+            # 保存用户上传的文件（原始文件，用于播放）
+            original_user_path = os.path.join(work_dir, secure_filename(user_file.filename))
+            user_file.save(original_user_path)
 
-            # 获取用户视频信息
+            # 获取用户视频信息（使用原始视频）
             try:
-                user_duration = get_video_duration(user_path)
-                user_fps = get_video_fps(user_path)
+                user_duration = get_video_duration(original_user_path)
+                user_fps = get_video_fps(original_user_path)
             except Exception as video_info_error:
                 print(f"[上传用户视频] 警告：无法获取视频信息: {video_info_error}")
                 # 设置默认值
@@ -857,8 +1295,8 @@ def upload_user_video():
                 print(f"[上传用户视频] 警告：检测到异常的duration值 {user_duration}，重置为0")
                 user_duration = 0
 
-            # 保存用户视频信息到数据库
-            db_result = db.add_user_video(user_video_id, user_file.filename, user_path, user_duration, user_fps)
+            # 保存用户视频信息到数据库（保存原始视频路径，用于播放）
+            db_result = db.add_user_video(user_video_id, user_file.filename, original_user_path, user_duration, user_fps)
             
             if not db_result:
                 print(f"[上传用户视频] 错误：数据库插入失败")
@@ -874,14 +1312,24 @@ def upload_user_video():
             import threading
             def extract_poses_async():
                 extraction_error = None
+                converted_video_path = None  # 转换后的临时文件路径
                 try:
                     print(f"[后台任务] 开始提取用户视频 {user_video_id} 的骨骼数据...")
                     
                     # 更新进度：开始处理
                     db.update_pose_extraction_progress(user_video_id, 10)
                     
-                    # 提取骨骼数据
-                    user_poses = extract_poses_from_video(user_path, n=5, early_stop_threshold=50)
+                    # 转换为标准格式（临时文件，仅用于骨骼提取）
+                    print(f"[后台任务] 转换视频格式用于骨骼提取...")
+                    converted_video_path = convert_video_to_standard_format(original_user_path)
+                    if converted_video_path is None:
+                        print(f"[后台任务] 警告：格式转换失败，使用原始文件")
+                        converted_video_path = original_user_path
+                    elif converted_video_path != original_user_path:
+                        print(f"[后台任务] 格式转换成功: {converted_video_path}")
+                    
+                    # 提取骨骼数据（使用转换后的临时视频）
+                    user_poses = extract_poses_from_video(converted_video_path, n=5, early_stop_threshold=50)
                     
                     # 更新进度：提取完成
                     db.update_pose_extraction_progress(user_video_id, 60)
@@ -927,6 +1375,14 @@ def upload_user_video():
                         print(f"[后台任务] 用户视频 {user_video_id} 处理完成但有警告: {extraction_error}")
                     else:
                         print(f"[后台任务] 用户视频 {user_video_id} 骨骼数据提取完成")
+                    
+                    # 删除转换后的临时文件（如果存在且不是原始文件）
+                    if converted_video_path and converted_video_path != original_user_path and os.path.exists(converted_video_path):
+                        try:
+                            os.remove(converted_video_path)
+                            print(f"[后台任务] 已删除临时转换文件: {converted_video_path}")
+                        except Exception as delete_error:
+                            print(f"[后台任务] 警告：删除临时转换文件失败: {delete_error}")
                         
                 except Exception as e:
                     extraction_error = f"处理失败: {str(e)}"
@@ -941,6 +1397,14 @@ def upload_user_video():
                         print(f"[后台任务] 已标记视频 {user_video_id} 为提取完成（失败）")
                     except Exception as update_error:
                         print(f"[后台任务] 更新状态失败: {str(update_error)}")
+                finally:
+                    # 确保删除转换后的临时文件（如果存在且不是原始文件）
+                    if 'converted_video_path' in locals() and converted_video_path and converted_video_path != original_user_path and os.path.exists(converted_video_path):
+                        try:
+                            os.remove(converted_video_path)
+                            print(f"[后台任务] 已删除临时转换文件: {converted_video_path}")
+                        except Exception as delete_error:
+                            print(f"[后台任务] 警告：删除临时转换文件失败: {delete_error}")
             
             thread = threading.Thread(target=extract_poses_async, daemon=True)
             thread.start()
@@ -949,7 +1413,7 @@ def upload_user_video():
                 'success': True,
                 'user_video_id': user_video_id,
                 'filename': user_file.filename,
-                'filepath': user_path,
+                'filepath': original_user_path,
                 'duration': user_duration,
                 'fps': user_fps,
                 'pose_data_extracted': False,  # 标记为正在提取中
@@ -1125,13 +1589,78 @@ def compare_uploaded_videos():
             print("使用缓存的参考视频标记骨骼视频...")
             import shutil
             shutil.copy2(reference_video['pose_video_path'], reference_pose_video)
+            # 验证复制的文件
+            if not os.path.exists(reference_pose_video):
+                raise Exception(f"复制参考视频标记骨骼视频失败: {reference_pose_video}")
+            file_size = os.path.getsize(reference_pose_video)
+            if file_size == 0:
+                raise Exception(f"复制的参考视频标记骨骼视频为空: {reference_pose_video}")
+            print(f"参考视频标记骨骼视频复制成功，大小: {file_size} 字节")
         else:
             print("生成参考视频标记骨骼视频...")
+            if not os.path.exists(reference_video['file_path']):
+                raise Exception(f"参考视频文件不存在: {reference_video['file_path']}")
             generate_pose_video(reference_video['file_path'], reference_pose_video, n=5)
+            # 验证生成的文件
+            if not os.path.exists(reference_pose_video):
+                raise Exception(f"生成的参考视频标记骨骼视频不存在: {reference_pose_video}")
+            file_size = os.path.getsize(reference_pose_video)
+            if file_size == 0:
+                raise Exception(f"生成的参考视频标记骨骼视频为空: {reference_pose_video}")
+            print(f"参考视频标记骨骼视频生成成功，大小: {file_size} 字节")
         
         # 生成用户视频的标记骨骼视频
-        print("生成用户视频标记骨骼视频...")
-        generate_pose_video(user_video['file_path'], user_pose_video, n=5)
+        print(f"生成用户视频标记骨骼视频...")
+        print(f"用户视频路径: {user_video['file_path']}")
+        print(f"用户视频是否存在: {os.path.exists(user_video['file_path'])}")
+        
+        if not os.path.exists(user_video['file_path']):
+            raise Exception(f"用户视频文件不存在: {user_video['file_path']}")
+        
+        try:
+            # 先转换为标准格式（与参考视频保持一致，确保帧率准确）
+            print(f"[生成用户骨骼视频] 转换视频格式以确保帧率准确...")
+            converted_user_video = convert_video_to_standard_format(user_video['file_path'])
+            video_for_pose = converted_user_video if converted_user_video else user_video['file_path']
+            if converted_user_video and converted_user_video != user_video['file_path']:
+                print(f"[生成用户骨骼视频] 格式转换成功: {converted_user_video}")
+            else:
+                print(f"[生成用户骨骼视频] 使用原始视频文件")
+            
+            # 生成视频（内部会验证）
+            generate_pose_video(video_for_pose, user_pose_video, n=5)
+            
+            # 删除临时转换文件（如果存在）
+            if converted_user_video and converted_user_video != user_video['file_path'] and os.path.exists(converted_user_video):
+                try:
+                    os.remove(converted_user_video)
+                    print(f"[生成用户骨骼视频] 已删除临时转换文件: {converted_user_video}")
+                except Exception as delete_error:
+                    print(f"[生成用户骨骼视频] 警告：删除临时转换文件失败: {delete_error}")
+            print(f"用户视频标记骨骼视频生成成功: {user_pose_video}")
+            
+            # 再次验证生成的文件（双重保险）
+            if not os.path.exists(user_pose_video):
+                raise Exception(f"生成的视频文件不存在: {user_pose_video}")
+            
+            file_size = os.path.getsize(user_pose_video)
+            if file_size == 0:
+                raise Exception(f"生成的视频文件为空: {user_pose_video}")
+            
+            print(f"生成的视频文件验证通过: {user_pose_video}, 大小: {file_size} 字节")
+            
+        except Exception as e:
+            print(f"生成用户视频标记骨骼视频失败: {e}")
+            import traceback
+            traceback.print_exc()
+            # 清理可能生成的不完整文件
+            if os.path.exists(user_pose_video):
+                try:
+                    os.remove(user_pose_video)
+                    print(f"已清理不完整的视频文件: {user_pose_video}")
+                except:
+                    pass
+            raise Exception(f"生成用户视频标记骨骼视频失败: {str(e)}")
 
         # 生成报告
         report_path = os.path.join(report_dir, "pose_differences_report.txt")
@@ -1152,6 +1681,17 @@ def compare_uploaded_videos():
         db.add_comparison_record(work_id, reference_video_id, user_video_id, threshold)
         db.update_comparison_result(work_id, len(differences), report_path)
 
+        # 清理 differences 中的 Infinity 值，确保 JSON 可以正常序列化
+        cleaned_differences = []
+        for diff in differences:
+            cleaned_diff = diff.copy()
+            # 将 Infinity 替换为很大的数字
+            diff_value = diff.get('difference')
+            if isinstance(diff_value, float):
+                if diff_value == float('inf') or diff_value != diff_value:  # 检查 inf 和 NaN
+                    cleaned_diff['difference'] = 999999.0
+            cleaned_differences.append(cleaned_diff)
+        
         # 返回结果
         result = {
             'success': True,
@@ -1174,8 +1714,8 @@ def compare_uploaded_videos():
             },
             'comparison': {
                 'threshold': threshold,
-                'total_differences': len(differences),
-                'differences': differences
+                'total_differences': len(cleaned_differences),
+                'differences': cleaned_differences
             },
             'pose_videos': {
                 'reference': f"/api/pose-video/{work_id}/reference",
@@ -1400,6 +1940,17 @@ def compare_videos():
             db.add_comparison_record(work_id, reference_video_id, user_video_id, threshold)
             db.update_comparison_result(work_id, len(differences), report_path)
 
+            # 清理 differences 中的 Infinity 值，确保 JSON 可以正常序列化
+            cleaned_differences = []
+            for diff in differences:
+                cleaned_diff = diff.copy()
+                # 将 Infinity 替换为很大的数字
+                diff_value = diff.get('difference')
+                if isinstance(diff_value, float):
+                    if diff_value == float('inf') or diff_value != diff_value:  # 检查 inf 和 NaN
+                        cleaned_diff['difference'] = 999999.0
+                cleaned_differences.append(cleaned_diff)
+
             # 返回结果
             result = {
                 'success': True,
@@ -1422,8 +1973,8 @@ def compare_videos():
                 },
                 'comparison': {
                     'threshold': threshold,
-                    'total_differences': len(differences),
-                    'differences': differences
+                    'total_differences': len(cleaned_differences),
+                    'differences': cleaned_differences
                 },
                 'report_path': report_path
             }
@@ -1532,16 +2083,185 @@ def delete_video(video_id):
         }), 500
 
 @app.route('/api/user-videos', methods=['GET'])
+@require_auth
 def list_user_videos():
-    """列出用户视频"""
+    """列出用户视频（只返回永久存储的视频）"""
     try:
-        user_id = request.args.get('user_id')
-        videos = db.get_user_videos(user_id)
+        # 获取当前登录用户ID
+        current_user_id = str(request.current_user['user_id'])
+        current_username = request.current_user['username']
+        
+        # 只获取当前用户的永久视频（有user_id且file_path在uploads/user目录下）
+        all_videos = db.get_user_videos(current_user_id)
+        
+        # 过滤出永久存储的视频（file_path包含uploads/user）
+        permanent_videos = []
+        user_upload_folder = os.path.join(UPLOAD_FOLDER, 'user')
+        user_upload_folder_abs = os.path.abspath(user_upload_folder)
+        
+        for video in all_videos:
+            file_path = video.get('file_path', '')
+            if file_path:
+                file_path_abs = os.path.abspath(file_path)
+                # 检查文件路径是否在永久存储目录下
+                if user_upload_folder_abs in file_path_abs or file_path.startswith('uploads/user'):
+                    # 添加作者信息（当前登录用户的用户名）
+                    video['author'] = current_username
+                    permanent_videos.append(video)
         
         return jsonify({
             'success': True,
-            'videos': videos
+            'videos': permanent_videos
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/comments/<video_id>', methods=['GET'], endpoint='get_comments')
+def get_comments(video_id):
+    """获取视频的评论列表"""
+    try:
+        video_type = request.args.get('video_type', 'user')  # 默认为 user
+        
+        comments = db.get_comments(video_id, video_type)
+        
+        return jsonify({
+            'success': True,
+            'comments': comments
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/comments', methods=['POST'], endpoint='add_comment')
+@require_auth
+def add_comment():
+    """添加评论 - 需要登录"""
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id', '').strip()
+        video_type = data.get('video_type', 'user').strip()
+        content = data.get('content', '').strip()
+        
+        # 验证输入
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': '视频ID不能为空'
+            }), 400
+        
+        if not content:
+            return jsonify({
+                'success': False,
+                'error': '评论内容不能为空'
+            }), 400
+        
+        if video_type not in ['reference', 'user']:
+            return jsonify({
+                'success': False,
+                'error': '无效的视频类型'
+            }), 400
+        
+        # 获取当前用户ID
+        user_id = request.current_user['user_id']
+        
+        # 添加评论
+        if not db.add_comment(video_id, video_type, user_id, content):
+            return jsonify({
+                'success': False,
+                'error': '添加评论失败'
+            }), 500
+        
+        # 获取最新添加的评论（包含用户名）
+        comments = db.get_comments(video_id, video_type)
+        new_comment = comments[0] if comments else None
+        
+        return jsonify({
+            'success': True,
+            'comment': new_comment,
+            'message': '评论添加成功'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/likes', methods=['POST'], endpoint='toggle_like')
+@require_auth
+def toggle_like():
+    """切换点赞状态（点赞/取消点赞）- 需要登录"""
+    try:
+        data = request.get_json()
+        video_id = data.get('video_id', '').strip()
+        video_type = data.get('video_type', 'user').strip()
+        
+        if not video_id:
+            return jsonify({
+                'success': False,
+                'error': '视频ID不能为空'
+            }), 400
+        
+        user_id = request.current_user['user_id']
+        
+        # 切换点赞状态
+        success, is_liked = db.toggle_like(video_id, video_type, user_id)
+        
+        if success:
+            # 获取更新后的点赞数量
+            like_count = db.get_like_count(video_id, video_type)
+            return jsonify({
+                'success': True,
+                'is_liked': is_liked,
+                'like_count': like_count
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '操作失败'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/likes/<video_id>', methods=['GET'], endpoint='get_like_info')
+def get_like_info(video_id):
+    """获取视频的点赞信息（点赞数量和当前用户是否已点赞）"""
+    try:
+        video_type = request.args.get('video_type', 'user').strip()
+        
+        # 获取点赞数量
+        like_count = db.get_like_count(video_id, video_type)
+        
+        # 检查当前用户是否已点赞（如果已登录）
+        is_liked = False
+        try:
+            auth_header = request.headers.get('Authorization', '')
+            token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else ''
+            
+            if token:
+                result = verify_auth_token(token)
+                if result and result.get('valid'):
+                    user_id = result['user_id']
+                    is_liked = db.is_liked(video_id, video_type, user_id)
+        except Exception as e:
+            # 未登录或获取用户信息失败，默认为未点赞
+            print(f"获取用户点赞状态失败: {e}")
+        
+        return jsonify({
+            'success': True,
+            'like_count': like_count,
+            'is_liked': is_liked
+        })
+            
     except Exception as e:
         return jsonify({
             'success': False,
@@ -1576,17 +2296,17 @@ def upload_reference_video():
         video_id = str(uuid.uuid4())
         task_id = str(uuid.uuid4())
         
-        # 保存参考视频
+        # 保存参考视频（原始文件，用于播放）
         filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
+        original_filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(original_filepath)
 
-        # 获取视频信息
-        duration = get_video_duration(filepath)
-        fps = get_video_fps(filepath)
+        # 获取视频信息（使用原始视频）
+        duration = get_video_duration(original_filepath)
+        fps = get_video_fps(original_filepath)
 
-        # 生成缩略图
-        thumbnail_path = generate_video_thumbnail(filepath, THUMBNAIL_FOLDER)
+        # 生成缩略图（使用原始视频）
+        thumbnail_path = generate_video_thumbnail(original_filepath, THUMBNAIL_FOLDER)
 
         # 获取可选的描述、标签、作者和标题
         description = request.form.get('description', '')
@@ -1594,8 +2314,8 @@ def upload_reference_video():
         author = request.form.get('author', '')
         title = request.form.get('title', '')
 
-        # 保存到数据库
-        if not db.add_reference_video(video_id, filename, filepath, duration, fps, description, tags, author, title, thumbnail_path):
+        # 保存到数据库（保存原始视频路径，用于播放）
+        if not db.add_reference_video(video_id, filename, original_filepath, duration, fps, description, tags, author, title, thumbnail_path):
             return jsonify({
                 'success': False,
                 'error': '保存到数据库失败'
@@ -1604,10 +2324,10 @@ def upload_reference_video():
         # 创建异步任务
         db.create_async_task(task_id, video_id, 'reference', 'pose_extraction')
         
-        # 启动后台线程处理骨骼提取
+        # 启动后台线程处理骨骼提取（传入原始文件路径，函数内部会转换）
         thread = threading.Thread(
             target=async_extract_poses_and_generate_video,
-            args=(task_id, video_id, filepath, 'reference')
+            args=(task_id, video_id, original_filepath, 'reference')
         )
         thread.daemon = True
         thread.start()
@@ -1619,7 +2339,7 @@ def upload_reference_video():
             'video_id': video_id,
             'task_id': task_id,
             'filename': filename,
-            'filepath': filepath,
+            'filepath': original_filepath,
             'duration': duration,
             'fps': fps,
             'description': description,
@@ -1633,6 +2353,184 @@ def upload_reference_video():
         })
 
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/upload-user-video-permanent', methods=['POST'])
+@require_auth
+def upload_user_video_permanent():
+    """上传用户视频到永久存储（支持标题）- 需要登录"""
+    try:
+        if 'video' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': '没有上传文件'
+            }), 400
+
+        file = request.files['video']
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': '未选择文件'
+            }), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({
+                'success': False,
+                'error': '不支持的文件格式'
+            }), 400
+
+        # 获取标题（必填）
+        title = request.form.get('title', '').strip()
+        if not title:
+            return jsonify({
+                'success': False,
+                'error': '视频标题不能为空'
+            }), 400
+
+        # 生成唯一视频ID和任务ID
+        video_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+        
+        # 保存用户视频到永久存储（UPLOAD_FOLDER/user目录）
+        user_upload_folder = os.path.join(UPLOAD_FOLDER, 'user')
+        if not os.path.exists(user_upload_folder):
+            os.makedirs(user_upload_folder)
+        
+        filename = secure_filename(file.filename)
+        original_filepath = os.path.join(user_upload_folder, filename)
+        file.save(original_filepath)
+
+        # 获取视频信息（使用原始视频）
+        duration = get_video_duration(original_filepath)
+        fps = get_video_fps(original_filepath)
+
+        # 获取当前登录用户ID
+        current_user_id = str(request.current_user['user_id'])
+
+        # 保存到数据库（保存原始视频路径，用于播放）
+        if not db.add_user_video(video_id, filename, original_filepath, duration, fps, user_id=current_user_id, title=title):
+            return jsonify({
+                'success': False,
+                'error': '保存到数据库失败'
+            }), 500
+
+        # 用户视频不需要处理骨骼数据，直接返回成功
+        print(f"用户视频 {filename} 上传成功（永久存储）")
+
+        return jsonify({
+            'success': True,
+            'video_id': video_id,
+            'filename': filename,
+            'filepath': original_filepath,
+            'duration': duration,
+            'fps': fps,
+            'title': title,
+            'message': '用户视频上传成功'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/upload-user-video-from-work', methods=['POST'])
+@require_auth
+def upload_user_video_from_work():
+    """从workId获取用户视频并上传到永久存储（支持标题）- 需要登录"""
+    try:
+        data = request.get_json()
+        work_id = data.get('work_id')
+        title = data.get('title', '').strip()
+        
+        if not work_id:
+            return jsonify({
+                'success': False,
+                'error': '缺少work_id'
+            }), 400
+        
+        if not title:
+            return jsonify({
+                'success': False,
+                'error': '视频标题不能为空'
+            }), 400
+
+        # 从数据库获取比较记录
+        comparison_record = db.get_comparison_record(work_id)
+        if not comparison_record:
+            return jsonify({
+                'success': False,
+                'error': '比较记录不存在'
+            }), 404
+        
+        user_video_id = comparison_record['user_video_id']
+        
+        # 获取用户视频信息
+        user_video = db.get_video_by_id(user_video_id, 'user')
+        if not user_video:
+            return jsonify({
+                'success': False,
+                'error': '用户视频不存在'
+            }), 404
+        
+        # 获取原始视频文件路径
+        original_file_path = user_video.get('file_path')
+        if not original_file_path or not os.path.exists(original_file_path):
+            return jsonify({
+                'success': False,
+                'error': '原始视频文件不存在'
+            }), 404
+
+        # 生成唯一视频ID和任务ID
+        new_video_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+        
+        # 保存用户视频到永久存储（UPLOAD_FOLDER/user目录）
+        user_upload_folder = os.path.join(UPLOAD_FOLDER, 'user')
+        if not os.path.exists(user_upload_folder):
+            os.makedirs(user_upload_folder)
+        
+        # 复制原始文件到永久存储
+        filename = user_video.get('filename', f'video_{new_video_id}.mp4')
+        new_filepath = os.path.join(user_upload_folder, secure_filename(filename))
+        
+        import shutil
+        shutil.copy2(original_file_path, new_filepath)
+
+        # 获取视频信息（使用原视频的信息）
+        duration = user_video.get('duration', 0)
+        fps = user_video.get('fps', 30.0)
+
+        # 获取当前登录用户ID
+        current_user_id = str(request.current_user['user_id'])
+
+        # 保存到数据库（使用user_id，不使用session_id）
+        if not db.add_user_video(new_video_id, filename, new_filepath, duration, fps, user_id=current_user_id, title=title):
+            return jsonify({
+                'success': False,
+                'error': '保存到数据库失败'
+            }), 500
+
+        # 用户视频不需要处理骨骼数据，直接返回成功
+        print(f"用户视频 {filename} 从workId {work_id} 上传成功（永久存储）")
+
+        return jsonify({
+            'success': True,
+            'video_id': new_video_id,
+            'filename': filename,
+            'filepath': new_filepath,
+            'duration': duration,
+            'fps': fps,
+            'title': title,
+            'message': '用户视频上传成功'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1747,12 +2645,34 @@ def get_default_reference_video():
             'error': str(e)
         }), 500
 
+def get_video_mimetype(file_path):
+    """根据文件扩展名获取视频MIME类型"""
+    ext = os.path.splitext(file_path)[1].lower()
+    mime_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.mkv': 'video/x-matroska',
+    }
+    return mime_types.get(ext, 'video/mp4')
+
 @app.route('/video/<video_id>')
 def stream_video(video_id):
     """视频流媒体播放 - 支持通过 http://IP:端口/video/视频ID 访问"""
     try:
-        # 从数据库获取视频信息
-        video_info = db.get_video_by_id(video_id)
+        # 支持通过查询参数指定视频类型，如果没有指定则自动查找
+        video_type = request.args.get('type', None)
+        
+        if video_type:
+            # 如果指定了类型，直接查找对应类型的视频
+            video_info = db.get_video_by_id(video_id, video_type)
+        else:
+            # 如果没有指定类型，先尝试查找参考视频，再查找用户视频
+            # 虽然UUID理论上不会冲突，但这样更安全
+            video_info = db.get_video_by_id(video_id, 'reference')
+            if not video_info:
+                video_info = db.get_video_by_id(video_id, 'user')
         
         if not video_info:
             return jsonify({'error': '视频不存在'}), 404
@@ -1761,6 +2681,9 @@ def stream_video(video_id):
         
         if not os.path.exists(file_path):
             return jsonify({'error': '视频文件不存在'}), 404
+        
+        # 根据文件扩展名获取正确的MIME类型
+        mimetype = get_video_mimetype(file_path)
         
         # 支持范围请求（Range requests）
         range_header = request.headers.get('Range', None)
@@ -1789,7 +2712,7 @@ def stream_video(video_id):
             from flask import Response
             rv = Response(data, 
                          206,
-                         mimetype='video/mp4',
+                         mimetype=mimetype,
                          direct_passthrough=True)
             rv.headers['Content-Range'] = f'bytes {byte1}-{byte2}/{size}'
             rv.headers['Accept-Ranges'] = 'bytes'
@@ -1798,7 +2721,7 @@ def stream_video(video_id):
         else:
             # 完整文件请求
             from flask import send_file
-            response = send_file(file_path, mimetype='video/mp4')
+            response = send_file(file_path, mimetype=mimetype)
             response.headers['Accept-Ranges'] = 'bytes'
             return response
             
@@ -1838,10 +2761,37 @@ def get_thumbnail(video_id):
             }), 404
         
         thumbnail_path = video.get('thumbnail_path')
-        if not thumbnail_path or not os.path.exists(thumbnail_path):
+        if not thumbnail_path:
             return jsonify({
                 'success': False,
-                'error': '缩略图不存在'
+                'error': '缩略图路径不存在'
+            }), 404
+        
+        # 如果路径是相对路径，转换为绝对路径
+        if not os.path.isabs(thumbnail_path):
+            # 尝试多个可能的路径
+            possible_paths = [
+                thumbnail_path,  # 原始相对路径
+                os.path.join(THUMBNAIL_FOLDER, os.path.basename(thumbnail_path)),  # 在THUMBNAIL_FOLDER中查找
+                os.path.join(os.getcwd(), thumbnail_path),  # 相对于当前工作目录
+            ]
+            
+            # 找到第一个存在的路径
+            thumbnail_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    thumbnail_path = path
+                    break
+            
+            if not thumbnail_path:
+                return jsonify({
+                    'success': False,
+                    'error': f'缩略图文件不存在，尝试的路径: {possible_paths}'
+                }), 404
+        elif not os.path.exists(thumbnail_path):
+            return jsonify({
+                'success': False,
+                'error': '缩略图文件不存在'
             }), 404
         
         # 返回缩略图文件
@@ -1849,6 +2799,8 @@ def get_thumbnail(video_id):
         return send_file(thumbnail_path, mimetype='image/jpeg')
         
     except Exception as e:
+        print(f"获取缩略图错误: {str(e)}")
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1868,8 +2820,93 @@ def get_pose_video(work_id, video_type):
         else:
             video_file = os.path.join(report_dir, "user_pose_video.mp4")
         
+        print(f"[获取标记骨骼视频] work_id={work_id}, video_type={video_type}")
+        print(f"[获取标记骨骼视频] 视频文件路径: {video_file}")
+        print(f"[获取标记骨骼视频] 报告目录是否存在: {os.path.exists(report_dir)}")
+        print(f"[获取标记骨骼视频] 视频文件是否存在: {os.path.exists(video_file)}")
+        
+        if not os.path.exists(report_dir):
+            print(f"[获取标记骨骼视频] 错误: 报告目录不存在: {report_dir}")
+            return jsonify({'error': f'报告目录不存在: {report_dir}'}), 404
+        
         if not os.path.exists(video_file):
-            return jsonify({'error': '视频文件不存在'}), 404
+            print(f"[获取标记骨骼视频] 错误: 视频文件不存在: {video_file}")
+            # 列出目录内容以便调试
+            if os.path.exists(report_dir):
+                files = os.listdir(report_dir)
+                print(f"[获取标记骨骼视频] 报告目录中的文件: {files}")
+            return jsonify({'error': f'视频文件不存在: {video_file}'}), 404
+        
+        # 检查文件大小
+        file_size = os.path.getsize(video_file)
+        print(f"[获取标记骨骼视频] 视频文件大小: {file_size} 字节")
+        if file_size == 0:
+            print(f"[获取标记骨骼视频] 警告: 视频文件大小为0")
+            return jsonify({'error': '视频文件为空'}), 500
+        
+        # 验证视频文件格式（使用ffprobe检查）
+        video_valid = False
+        try:
+            import subprocess
+            cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=format_name,duration', '-of', 'json', video_file]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                import json
+                data = json.loads(result.stdout)
+                format_name = data.get('format', {}).get('format_name', 'unknown')
+                duration = data.get('format', {}).get('duration', '0')
+                print(f"[获取标记骨骼视频] 视频格式: {format_name}, 时长: {duration}秒")
+                # 检查格式是否包含 mp4 或 mov（浏览器兼容格式）
+                if 'mp4' in format_name.lower() or 'mov' in format_name.lower() or 'quicktime' in format_name.lower():
+                    video_valid = True
+                else:
+                    print(f"[获取标记骨骼视频] 警告: 视频格式可能不兼容: {format_name}")
+            else:
+                print(f"[获取标记骨骼视频] 警告: 无法验证视频格式: {result.stderr}")
+                # 如果 ffprobe 失败，尝试使用 OpenCV 验证
+                try:
+                    import cv2
+                    cap = cv2.VideoCapture(video_file)
+                    if cap.isOpened():
+                        ret, frame = cap.read()
+                        cap.release()
+                        if ret and frame is not None:
+                            video_valid = True
+                            print(f"[获取标记骨骼视频] 使用 OpenCV 验证成功")
+                        else:
+                            print(f"[获取标记骨骼视频] 错误: OpenCV 无法读取视频帧")
+                    else:
+                        print(f"[获取标记骨骼视频] 错误: OpenCV 无法打开视频文件")
+                except Exception as cv_error:
+                    print(f"[获取标记骨骼视频] OpenCV 验证失败: {cv_error}")
+        except FileNotFoundError:
+            print(f"[获取标记骨骼视频] 警告: ffprobe 未找到，跳过格式验证")
+            # 如果 ffprobe 不可用，尝试使用 OpenCV 验证
+            try:
+                import cv2
+                cap = cv2.VideoCapture(video_file)
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None:
+                        video_valid = True
+                        print(f"[获取标记骨骼视频] 使用 OpenCV 验证成功")
+                    else:
+                        print(f"[获取标记骨骼视频] 错误: OpenCV 无法读取视频帧")
+                else:
+                    print(f"[获取标记骨骼视频] 错误: OpenCV 无法打开视频文件")
+            except Exception as cv_error:
+                print(f"[获取标记骨骼视频] OpenCV 验证失败: {cv_error}")
+        except Exception as e:
+            print(f"[获取标记骨骼视频] 警告: 验证视频格式时出错: {e}")
+        
+        # 如果视频无效，返回错误
+        if not video_valid:
+            print(f"[获取标记骨骼视频] 错误: 视频文件无效或格式不兼容")
+            return jsonify({
+                'error': '视频文件无效或格式不兼容，无法播放',
+                'details': '请重新生成视频或检查视频文件'
+            }), 500
         
         # 支持范围请求
         range_header = request.headers.get('Range', None)
@@ -1984,7 +3021,8 @@ def get_frame_comparison(work_id):
             
             if has_pose_data:
                 # 有骨骼数据时，检查质量
-                if pose_diff == float('inf'):
+                # 使用很大的数字（999999.0）表示质量差，而不是 Infinity
+                if pose_diff >= 999999.0:
                     # 骨骼提取质量差（有效点太少）
                     pose_quality_issue = True
                     has_difference = True  # 标记为有差异
@@ -1999,12 +3037,17 @@ def get_frame_comparison(work_id):
                 pose_diff = -1
                 has_difference = True  # 标记为有差异（因为无法比较）
             
+            # 清理 Infinity 值，确保 JSON 可以正常序列化
+            cleaned_diff = float(pose_diff)
+            if isinstance(cleaned_diff, float) and (cleaned_diff == float('inf') or cleaned_diff != cleaned_diff):  # 检查 inf 和 NaN
+                cleaned_diff = 999999.0
+            
             frame_comparisons.append({
                 'frame_index': i,
                 'reference_frame': ref_frame_idx,
                 'user_frame': user_frame_idx,
                 'timestamp': timestamp,
-                'difference': float(pose_diff),
+                'difference': cleaned_diff,
                 'has_difference': has_difference,
                 'has_pose_data': has_pose_data,
                 'pose_quality_issue': pose_quality_issue

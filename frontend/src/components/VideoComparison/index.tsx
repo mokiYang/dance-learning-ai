@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { apiService, FrameComparisonResult, FrameComparison } from '../../services/api';
+import { showToast } from '../Toast/ToastContainer';
 import './index.less';
 
 interface VideoComparisonProps {
@@ -15,26 +16,48 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [videoLoading, setVideoLoading] = useState(true);
+  const [userVideoError, setUserVideoError] = useState<string | null>(null);
+  const [referenceVideoError, setReferenceVideoError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [userVideoLoaded, setUserVideoLoaded] = useState(false);
+  const [referenceVideoLoaded, setReferenceVideoLoaded] = useState(false);
   
   const referenceVideoRef = useRef<HTMLVideoElement>(null);
   const userVideoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [videoTitle, setVideoTitle] = useState('');
+  
+  // 缓存视频URL，避免每次渲染都重新计算
+  const referenceVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'reference'), [workId]);
+  const userVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'user'), [workId]);
 
   // 获取逐帧对比数据
   useEffect(() => {
     const fetchFrameData = async () => {
       try {
         setLoading(true);
+        setVideoLoading(true);
+        setUserVideoLoaded(false);
+        setReferenceVideoLoaded(false);
+        setRetryCount(0);
+        setUserVideoError(null);
+        setReferenceVideoError(null);
         const result = await apiService.getFrameComparison(workId);
         if (result.success) {
           setFrameData(result);
+          // 数据加载完成后，允许视频元素渲染
+          setLoading(false);
+          setVideoLoading(false);
         } else {
           setError('获取对比数据失败');
+          setLoading(false);
+          setVideoLoading(false);
         }
       } catch (err) {
         setError('获取对比数据失败');
         console.error('获取对比数据失败:', err);
-      } finally {
         setLoading(false);
         setVideoLoading(false);
       }
@@ -43,21 +66,64 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
     fetchFrameData();
   }, [workId]);
 
-  // 同步视频播放
+  // 同步视频播放（优化版本，避免干扰正常播放）
   useEffect(() => {
     const referenceVideo = referenceVideoRef.current;
     const userVideo = userVideoRef.current;
     
     if (!referenceVideo || !userVideo || !frameData) return;
 
+    let isSyncing = false; // 防止递归同步
+    let lastSyncTime = 0;
+    const SYNC_THRESHOLD = 0.2; // 时间差阈值（秒），超过这个值才同步
+    const SYNC_INTERVAL = 200; // 同步间隔（毫秒），避免过于频繁
+
     const syncVideos = () => {
-      if (referenceVideo.currentTime !== userVideo.currentTime) {
-        userVideo.currentTime = referenceVideo.currentTime;
+      // 防止过于频繁的同步
+      const now = Date.now();
+      if (now - lastSyncTime < SYNC_INTERVAL || isSyncing) {
+        return;
+      }
+      lastSyncTime = now;
+
+      const timeDiff = Math.abs(referenceVideo.currentTime - userVideo.currentTime);
+      
+      // 只有当时间差超过阈值时才同步
+      // 播放时使用更宽松的阈值，避免频繁干扰
+      const threshold = referenceVideo.paused ? SYNC_THRESHOLD : SYNC_THRESHOLD * 2;
+      
+      if (timeDiff > threshold) {
+        isSyncing = true;
+        // 使用 requestAnimationFrame 来平滑同步，避免直接设置导致跳跃
+        requestAnimationFrame(() => {
+          if (userVideo && referenceVideo) {
+            userVideo.currentTime = referenceVideo.currentTime;
+          }
+          isSyncing = false;
+        });
       }
     };
 
+    // 使用 seeked 事件在跳转后同步，而不是 timeupdate（更精确且不干扰播放）
+    const handleSeeked = () => {
+      if (!isSyncing && referenceVideo && userVideo) {
+        const timeDiff = Math.abs(referenceVideo.currentTime - userVideo.currentTime);
+        if (timeDiff > 0.1) {
+          isSyncing = true;
+          userVideo.currentTime = referenceVideo.currentTime;
+          setTimeout(() => { isSyncing = false; }, 100);
+        }
+      }
+    };
+
+    // 监听跳转事件（更精确）
+    referenceVideo.addEventListener('seeked', handleSeeked);
+    
+    // 仍然监听 timeupdate，但使用更宽松的条件
     referenceVideo.addEventListener('timeupdate', syncVideos);
+    
     return () => {
+      referenceVideo.removeEventListener('seeked', handleSeeked);
       referenceVideo.removeEventListener('timeupdate', syncVideos);
     };
   }, [frameData]);
@@ -73,6 +139,13 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       referenceVideo.pause();
       userVideo.pause();
     } else {
+      // 播放前先同步时间
+      const currentTime = referenceVideo.currentTime;
+      userVideo.currentTime = currentTime;
+      
+      // 确保播放速度一致
+      userVideo.playbackRate = referenceVideo.playbackRate;
+      
       referenceVideo.play();
       userVideo.play();
     }
@@ -102,6 +175,11 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
     const userVideo = userVideoRef.current;
     
     if (referenceVideo && userVideo) {
+      // 先同步时间，再设置播放速度
+      const currentTime = referenceVideo.currentTime;
+      userVideo.currentTime = currentTime;
+      
+      // 设置播放速度
       referenceVideo.playbackRate = speed;
       userVideo.playbackRate = speed;
       setPlaybackSpeed(speed);
@@ -125,32 +203,261 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
     );
   }
 
+  const handleUploadClick = () => {
+    setShowUploadForm(true);
+    setVideoTitle('');
+  };
+
+  const handleUploadCancel = () => {
+    setShowUploadForm(false);
+    setVideoTitle('');
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!videoTitle.trim()) {
+      showToast('请输入视频标题', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const response = await apiService.uploadUserVideoFromWork(workId, videoTitle.trim());
+      
+      if (response.success) {
+        showToast('用户视频上传成功！视频已保存到您的视频列表', 'success', 3000);
+        setShowUploadForm(false);
+        setVideoTitle('');
+      } else {
+        showToast(`上传失败: 未知错误`, 'error');
+      }
+    } catch (err: any) {
+      console.error('上传失败:', err);
+      showToast(`上传失败: ${err.message || '网络错误'}`, 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="video-comparison">
+      {/* 上传表单弹窗 */}
+      {showUploadForm && (
+        <div className="upload-form-overlay" onClick={handleUploadCancel}>
+          <div className="upload-form" onClick={(e) => e.stopPropagation()}>
+            <div className="form-header">
+              <h3>投稿</h3>
+              <button className="close-button" onClick={handleUploadCancel}>
+                ×
+              </button>
+            </div>
+
+            <div className="form-content">
+              <div className="form-group">
+                <label htmlFor="video-title">视频标题 *</label>
+                <input
+                  id="video-title"
+                  type="text"
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                  placeholder="请输入视频标题"
+                  required
+                  autoFocus
+                />
+              </div>
+              
+              <div className="form-actions">
+                <button
+                  className="cancel-button"
+                  onClick={handleUploadCancel}
+                  disabled={uploading}
+                >
+                  取消
+                </button>
+                <button
+                  className="submit-button"
+                  onClick={handleUploadSubmit}
+                  disabled={uploading || !videoTitle.trim()}
+                >
+                  {uploading ? (
+                    <>
+                      <span className="upload-icon">⏳</span>
+                      上传中...
+                    </>
+                  ) : (
+                    <>
+                      <span className="upload-icon">📤</span>
+                      确认上传
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="comparison-header">
         <h3>视频对比分析</h3>
-        <button onClick={onClose} className="close-btn">关闭</button>
+        <div className="header-actions">
+          <button 
+            onClick={handleUploadClick} 
+            className="upload-user-video-btn"
+          >
+            投稿
+          </button>
+          <button onClick={onClose} className="close-btn">关闭</button>
+        </div>
       </div>
 
       <div className="video-container">
         <div className="video-panel">
-          <video
-            ref={referenceVideoRef}
-            src={apiService.getPoseVideoUrl(workId, 'reference')}
-            className="comparison-video"
-          />
+          {referenceVideoError ? (
+            <div className="video-error">
+              <div className="error-message">{referenceVideoError}</div>
+              <button 
+                className="retry-btn" 
+                onClick={() => {
+                  setReferenceVideoError(null);
+                  setReferenceVideoLoaded(false);
+                  if (referenceVideoRef.current) {
+                    referenceVideoRef.current.load();
+                  }
+                }}
+              >
+                重试
+              </button>
+            </div>
+          ) : (
+            <video
+              ref={referenceVideoRef}
+              src={referenceVideoUrl}
+              className="comparison-video"
+              controls={false}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedData={() => {
+                if (!referenceVideoLoaded) {
+                  console.log('参考视频加载完成');
+                  setReferenceVideoError(null);
+                  setReferenceVideoLoaded(true);
+                }
+              }}
+              onError={(e) => {
+                const video = e.currentTarget;
+                let errorMsg = '未知错误';
+                
+                if (video.error) {
+                  const errorCode = video.error.code;
+                  const errorMessages: { [key: number]: string } = {
+                    1: '视频加载被中止',
+                    2: '网络错误导致视频加载失败',
+                    3: '视频解码失败',
+                    4: '视频格式不支持或视频源无效'
+                  };
+                  errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                  if (video.error.message) {
+                    errorMsg += `, 消息: ${video.error.message}`;
+                  }
+                }
+                
+                console.error('参考视频加载失败:', {
+                  error: e,
+                  videoError: video.error,
+                  src: video.src,
+                  networkState: video.networkState,
+                  readyState: video.readyState
+                });
+                
+                setReferenceVideoError(`参考视频加载失败: ${errorMsg}。`);
+                setError(`参考视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+              }}
+            />
+          )}
         </div>
         
         <div className="video-panel">
-          <video
-            ref={userVideoRef}
-            src={apiService.getPoseVideoUrl(workId, 'user')}
-            className="comparison-video"
-          />
+          {userVideoError ? (
+            <div className="video-error">
+              <div className="error-message">{userVideoError}</div>
+              <button 
+                className="retry-btn" 
+                onClick={() => {
+                  setUserVideoError(null);
+                  setUserVideoLoaded(false);
+                  if (userVideoRef.current) {
+                    userVideoRef.current.load();
+                  }
+                }}
+              >
+                重试
+              </button>
+            </div>
+          ) : (
+            <video
+              ref={userVideoRef}
+              src={userVideoUrl}
+              className="comparison-video"
+              controls={false}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedData={() => {
+                if (!userVideoLoaded) {
+                  console.log('用户视频加载完成');
+                  setVideoLoading(false);
+                  setUserVideoLoaded(true);
+                  setUserVideoError(null);
+                  setRetryCount(0);
+                }
+              }}
+              onError={(e) => {
+                const video = e.currentTarget;
+                let errorMsg = '未知错误';
+                
+                if (video.error) {
+                  const errorCode = video.error.code;
+                  const errorMessages: { [key: number]: string } = {
+                    1: '视频加载被中止',
+                    2: '网络错误导致视频加载失败',
+                    3: '视频解码失败',
+                    4: '视频格式不支持或视频源无效'
+                  };
+                  errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                  if (video.error.message) {
+                    errorMsg += `, 消息: ${video.error.message}`;
+                  }
+                }
+                
+                console.error('用户视频加载失败:', {
+                  error: e,
+                  videoError: video.error,
+                  src: video.src,
+                  networkState: video.networkState,
+                  readyState: video.readyState
+                });
+                
+                setUserVideoError(`用户视频加载失败: ${errorMsg}。`);
+                
+                // 如果是格式不支持错误，尝试重新加载（最多重试1次，避免过多请求）
+                if (video.error?.code === 4 && retryCount < 1 && !userVideoLoaded) {
+                  setTimeout(() => {
+                    console.log(`重试加载用户视频 (${retryCount + 1}/1)...`);
+                    setRetryCount(retryCount + 1);
+                    if (userVideoRef.current) {
+                      userVideoRef.current.load();
+                    }
+                  }, 3000);
+                } else {
+                  setError(`用户视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+                }
+              }}
+            />
+          )}
         </div>
       </div>
 
-      <div className="controls">
+      <div className="video-compare-controls">
         <div className="playback-controls">
           <button onClick={togglePlay} className="play-btn">
             {isPlaying ? '暂停' : '播放'}

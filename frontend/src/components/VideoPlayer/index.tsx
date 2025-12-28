@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiService, ReferenceVideo, getVideoUrl, getThumbnailUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
+import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
+import CommentModal from '../CommentModal';
 import './index.less';
 
 const VideoPlayer: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
@@ -30,6 +33,10 @@ const VideoPlayer: React.FC = () => {
   const [isSwapped, setIsSwapped] = useState(false);
   // 新增状态：摄像头朝向（user=前置，environment=后置）
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  
+  // 评论相关状态
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
 
   const videoRecorder = useRef<VideoRecorder>(new VideoRecorder());
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -54,6 +61,11 @@ const VideoPlayer: React.FC = () => {
           const foundVideo = response.videos.find(v => v.video_id === id);
           if (foundVideo) {
             setVideo(foundVideo);
+            // 获取评论数量
+            const commentsResponse = await apiService.getComments(id, 'reference');
+            if (commentsResponse.success) {
+              setCommentCount(commentsResponse.comments?.length || 0);
+            }
           } else {
             setError('未找到指定的视频');
           }
@@ -394,6 +406,20 @@ const VideoPlayer: React.FC = () => {
     stopRecording();
   };
 
+  const handleShowComments = () => {
+    setShowCommentModal(true);
+  };
+
+  const handleCommentSubmit = async () => {
+    // 刷新评论数量
+    if (id) {
+      const commentsResponse = await apiService.getComments(id, 'reference');
+      if (commentsResponse.success) {
+        setCommentCount(commentsResponse.comments?.length || 0);
+      }
+    }
+  };
+
   const handleBackToList = () => {
     // 停止录制
     if (isRecording) {
@@ -410,7 +436,9 @@ const VideoPlayer: React.FC = () => {
       clearInterval(countdownIntervalRef.current);
     }
     
-    navigate('/');
+    // 返回时带上 tab 参数
+    const tab = searchParams.get('tab') || 'reference';
+    navigate(`/?tab=${tab}`);
   };
 
   const handleReplay = () => {
@@ -432,144 +460,161 @@ const VideoPlayer: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="video-player-container">
-        <div className="loading-container">
-          <div className="loading-spinner">加载中...</div>
-        </div>
-      </div>
+  // 构建右侧按钮配置
+  const rightButtons: ControlButton[] = [];
+  
+  // 评论按钮（始终显示）
+  rightButtons.push({
+    label: (
+      <>
+        <span className="comment-icon">💬</span>
+        <span className="comment-text">评论</span>
+        {commentCount > 0 && (
+          <span className="comment-count">{commentCount}</span>
+        )}
+      </>
+    ),
+    className: 'btn-comment',
+    onClick: handleShowComments,
+    disabled: !isAuthenticated,
+    visible: true,
+  });
+  
+  if (isAuthenticated) {
+    rightButtons.push({
+      label: '录同款',
+      className: 'btn-success',
+      onClick: handleFollowLearning,
+      disabled: isCameraActive,
+      visible: true,
+    });
+  } else {
+    rightButtons.push({
+      label: '登录后可录同款',
+      className: 'btn-login-required',
+      onClick: () => navigate('/profile'),
+      visible: true,
+    });
+  }
+  
+  // 摄像头就绪后显示开始录制按钮
+  if (isCameraActive && isCameraReady && !isRecording && !hasStartedCountdown) {
+    rightButtons.push({
+      label: '开始录制',
+      className: 'btn-record-start',
+      onClick: handleStartRecordingClick,
+      visible: true,
+    });
+  }
+  
+  // 录制控制按钮
+  if (isRecording) {
+    rightButtons.push(
+      {
+        label: isPlaying ? '暂停' : '继续',
+        className: 'btn-warning',
+        onClick: handlePauseRecording,
+        disabled: !isRecording,
+        visible: true,
+      },
+      {
+        label: '结束',
+        className: 'btn-danger',
+        onClick: handleStopRecording,
+        disabled: !isRecording,
+        visible: true,
+      }
     );
   }
 
-  if (!video) {
-    return (
-      <div className="video-player-container">
-        <div className="error-container">
-          <div className="error-message">视频不存在</div>
-          <button className="btn btn-primary" onClick={handleBackToList}>
-            返回列表
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="video-player-container">
-      <div className="controls">
-        <button className="btn-back" onClick={handleBackToList}>
-          ←
-        </button>
-        
-        <div className="controls-right">
-          {isAuthenticated ? (
-            <button 
-              className="btn-action btn-success" 
-              onClick={handleFollowLearning}
-              disabled={isCameraActive}
-            >
-              录同款
-            </button>
-          ) : (
-            <button 
-              className="btn-login-required" 
-              onClick={() => navigate('/profile')}
-            >
-              登录后可录同款
-            </button>
-          )}
-          
-          {/* 摄像头就绪后显示开始录制按钮 */}
-          {isCameraActive && isCameraReady && !isRecording && !hasStartedCountdown && (
-            <button 
-              className="btn-action btn-record-start" 
-              onClick={handleStartRecordingClick}
-            >
-              开始录制
-            </button>
-          )}
-          
-          {/* 录制控制按钮 */}
-          {isRecording && (
-            <>
-              <button 
-                className="btn-action btn-warning" 
-                onClick={handlePauseRecording}
-                disabled={!isRecording}
-              >
-                {isPlaying ? '暂停' : '继续'}
-              </button>
-              <button 
-                className="btn-action btn-danger" 
-                onClick={handleStopRecording}
-                disabled={!isRecording}
-              >
-                结束
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="video-layout">
-        {/* 教学视频 - ref 始终绑定 */}
+  // 渲染自定义内容（摄像头视频和倒计时）
+  const renderCustomContent = () => (
+    <>
+      {/* 摄像头视频 - ref 始终绑定 */}
+      {isCameraActive && (
         <div 
-          className={`video-wrapper ${isCameraActive ? (isSwapped ? 'as-overlay' : 'as-main') : 'as-main'}`}
-          onClick={isCameraActive && isSwapped ? handleSwapPosition : undefined}
+          className={`video-wrapper ${isSwapped ? 'as-main' : 'as-overlay'}`}
+          onClick={handleSwapPosition}
         >
           <video
-            ref={videoRef}
+            ref={cameraVideoRef}
             className="video-element"
-            src={getVideoUrl(video.video_id)}
-            poster={video.thumbnail_path ? getThumbnailUrl(video.video_id) : undefined}
-            controls={!isSwapped || !isCameraActive}
-            preload="metadata"
+            autoPlay
+            muted
             playsInline
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
           />
+          {/* 切换前后置摄像头按钮 - 只在摄像头全屏时显示 */}
+          {isSwapped && (
+            <button 
+              className="btn-switch-camera"
+              onClick={handleSwitchCamera}
+              disabled={isRecording}
+              title={facingMode === 'user' ? '切换到后置' : '切换到前置'}
+            >
+              <svg viewBox="0 0 1024 1024" width="28" height="28" fill="currentColor">
+                <path d="M719.127273 193.163636c-2.327273 2.327273-4.654545 4.654545-6.981818 4.654546l-134.981819 55.854545c-11.636364 6.981818-25.6 0-32.581818-11.636363-6.981818-11.636364 0-25.6 11.636364-32.581819l111.709091-44.218181-67.490909-111.709091c-6.981818-11.636364 0-25.6 11.636363-32.581818 11.636364-6.981818 25.6 0 32.581818 11.636363L721.454545 165.236364c2.327273 4.654545 2.327273 11.636364 2.327273 18.618181-2.327273 2.327273-2.327273 4.654545-4.654545 9.309091zM309.527273 812.218182c2.327273-2.327273 4.654545-4.654545 6.981818-4.654546l134.981818-55.854545c11.636364-6.981818 25.6 0 32.581818 11.636364 6.981818 11.636364 0 25.6-11.636363 32.581818L358.4 837.818182l67.490909 111.709091c6.981818 11.636364 0 25.6-11.636364 32.581818-11.636364 6.981818-25.6 0-32.581818-11.636364L304.872727 837.818182c-2.327273-4.654545-2.327273-11.636364-2.327272-18.618182l6.981818-6.981818z"/>
+                <path d="M209.454545 742.4c-6.981818 0-13.963636-2.327273-18.618181-9.309091C72.145455 581.818182 79.127273 370.036364 209.454545 225.745455c128-141.963636 339.781818-172.218182 502.69091-72.145455 9.309091 9.309091 11.636364 23.272727 4.654545 34.909091s-20.945455 13.963636-32.581818 6.981818c-144.290909-88.436364-330.472727-62.836364-442.181818 62.836364-114.036364 125.672727-121.018182 314.181818-16.290909 446.836363 6.981818 9.309091 6.981818 25.6-4.654546 32.581819-2.327273 2.327273-6.981818 4.654545-11.636364 4.654545zM523.636364 907.636364c-69.818182 0-139.636364-18.618182-202.472728-55.854546-11.636364-6.981818-13.963636-20.945455-6.981818-32.581818 6.981818-11.636364 20.945455-13.963636 32.581818-6.981818 141.963636 86.109091 328.145455 58.181818 437.527273-65.163637 111.709091-123.345455 118.690909-309.527273 18.618182-442.181818-6.981818-9.309091-4.654545-25.6 4.654545-32.581818 9.309091-6.981818 25.6-4.654545 32.581819 4.654546 114.036364 151.272727 104.727273 360.727273-20.945455 502.690909-79.127273 83.781818-186.181818 128-295.563636 128z"/>
+              </svg>
+            </button>
+          )}
         </div>
+      )}
 
-        {/* 摄像头视频 - ref 始终绑定 */}
-        {isCameraActive && (
-          <div 
-            className={`video-wrapper ${isSwapped ? 'as-main' : 'as-overlay'}`}
-            onClick={handleSwapPosition}
-          >
-            <video
-              ref={cameraVideoRef}
-              className="video-element"
-              autoPlay
-              muted
-              playsInline
-            />
-            {/* 切换前后置摄像头按钮 - 只在摄像头全屏时显示 */}
-            {isSwapped && (
-              <button 
-                className="btn-switch-camera"
-                onClick={handleSwitchCamera}
-                disabled={isRecording}
-                title={facingMode === 'user' ? '切换到后置' : '切换到前置'}
-              >
-                <svg viewBox="0 0 1024 1024" width="28" height="28" fill="currentColor">
-                  <path d="M719.127273 193.163636c-2.327273 2.327273-4.654545 4.654545-6.981818 4.654546l-134.981819 55.854545c-11.636364 6.981818-25.6 0-32.581818-11.636363-6.981818-11.636364 0-25.6 11.636364-32.581819l111.709091-44.218181-67.490909-111.709091c-6.981818-11.636364 0-25.6 11.636363-32.581818 11.636364-6.981818 25.6 0 32.581818 11.636363L721.454545 165.236364c2.327273 4.654545 2.327273 11.636364 2.327273 18.618181-2.327273 2.327273-2.327273 4.654545-4.654545 9.309091zM309.527273 812.218182c2.327273-2.327273 4.654545-4.654545 6.981818-4.654546l134.981818-55.854545c11.636364-6.981818 25.6 0 32.581818 11.636364 6.981818 11.636364 0 25.6-11.636363 32.581818L358.4 837.818182l67.490909 111.709091c6.981818 11.636364 0 25.6-11.636364 32.581818-11.636364 6.981818-25.6 0-32.581818-11.636364L304.872727 837.818182c-2.327273-4.654545-2.327273-11.636364-2.327272-18.618182l6.981818-6.981818z"/>
-                  <path d="M209.454545 742.4c-6.981818 0-13.963636-2.327273-18.618181-9.309091C72.145455 581.818182 79.127273 370.036364 209.454545 225.745455c128-141.963636 339.781818-172.218182 502.69091-72.145455 9.309091 9.309091 11.636364 23.272727 4.654545 34.909091s-20.945455 13.963636-32.581818 6.981818c-144.290909-88.436364-330.472727-62.836364-442.181818 62.836364-114.036364 125.672727-121.018182 314.181818-16.290909 446.836363 6.981818 9.309091 6.981818 25.6-4.654546 32.581819-2.327273 2.327273-6.981818 4.654545-11.636364 4.654545zM523.636364 907.636364c-69.818182 0-139.636364-18.618182-202.472728-55.854546-11.636364-6.981818-13.963636-20.945455-6.981818-32.581818 6.981818-11.636364 20.945455-13.963636 32.581818-6.981818 141.963636 86.109091 328.145455 58.181818 437.527273-65.163637 111.709091-123.345455 118.690909-309.527273 18.618182-442.181818-6.981818-9.309091-4.654545-25.6 4.654545-32.581818 9.309091-6.981818 25.6-4.654545 32.581819 4.654546 114.036364 151.272727 104.727273 360.727273-20.945455 502.690909-79.127273 83.781818-186.181818 128-295.563636 128z"/>
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
+      {/* 全屏倒计时覆盖层 */}
+      {isCountdownActive && (
+        <div className="fullscreen-countdown-overlay">
+          <div className="fullscreen-countdown-number">{countdown}</div>
+        </div>
+      )}
+    </>
+  );
 
-        {/* 全屏倒计时覆盖层 */}
-        {isCountdownActive && (
-          <div className="fullscreen-countdown-overlay">
-            <div className="fullscreen-countdown-number">{countdown}</div>
-          </div>
-        )}
-      </div>
+  // 处理视频包装器，支持摄像头切换
+  const videoWrapperClass = isCameraActive 
+    ? (isSwapped ? 'as-overlay' : 'as-main') 
+    : 'as-main';
 
+  // 自定义视频渲染
+  const customVideo = (
+    <div 
+      className={`video-wrapper ${videoWrapperClass}`}
+      onClick={isCameraActive && isSwapped ? handleSwapPosition : undefined}
+    >
+      <video
+        ref={videoRef}
+        className="video-element"
+        src={getVideoUrl(video?.video_id || '')}
+        poster={video?.thumbnail_path ? getThumbnailUrl(video.video_id) : undefined}
+        controls={!isSwapped || !isCameraActive}
+        preload="metadata"
+        playsInline
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+      />
     </div>
+  );
+
+  return (
+    <>
+      <BaseVideoPlayer
+        onBack={handleBackToList}
+        rightButtons={rightButtons}
+        loading={loading}
+        error={!video ? '视频不存在' : null}
+        customVideo={customVideo}
+      >
+        {renderCustomContent()}
+      </BaseVideoPlayer>
+
+      {showCommentModal && (
+        <CommentModal
+          videoId={id!}
+          videoType="reference"
+          onClose={() => setShowCommentModal(false)}
+          onCommentSubmit={handleCommentSubmit}
+        />
+      )}
+    </>
   );
 };
 

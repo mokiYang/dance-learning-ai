@@ -10,10 +10,11 @@
 const isDev = import.meta.env.DEV;
 
 // 服务器基础 URL
-export const SERVER_BASE_URL = isDev ? 'http://localhost:8128' : '';
+// 开发环境使用 localhost，生产环境使用相对路径
+export const SERVER_BASE_URL = isDev ? 'http://localhost:8128' : window.location.origin;
 
 // API 基础 URL
-export const API_BASE_URL = isDev ? 'http://localhost:8128/api' : '/api';
+export const API_BASE_URL = isDev ? 'http://localhost:8128/api' : `${window.location.origin}/api`;
 
 // Token 存储键名
 export const TOKEN_KEY = 'dance_auth_token';
@@ -24,11 +25,33 @@ export const USER_KEY = 'dance_current_user';
 // 获取服务器基础 URL（供其他组件使用）
 export const getServerBaseUrl = () => SERVER_BASE_URL;
 
+// 获取当前域名（用于生产环境）
+const getCurrentOrigin = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return '';
+};
+
 // 获取视频 URL
-export const getVideoUrl = (videoId: string) => `${SERVER_BASE_URL}/video/${videoId}`;
+export const getVideoUrl = (videoId: string, videoType: 'reference' | 'user' = 'reference') => {
+  const typeParam = videoType === 'user' ? '?type=user' : '';
+  if (isDev) {
+    return `${SERVER_BASE_URL}/video/${videoId}${typeParam}`;
+  }
+  // 生产环境：使用相对路径，浏览器会自动解析为完整 URL
+  return `/video/${videoId}${typeParam}`;
+};
 
 // 获取视频缩略图 URL
-export const getThumbnailUrl = (videoId: string) => `${SERVER_BASE_URL}/thumbnail/${videoId}`;
+export const getThumbnailUrl = (videoId: string) => {
+  if (isDev) {
+    return `${SERVER_BASE_URL}/thumbnail/${videoId}`;
+  }
+  // 生产环境：使用相对路径，浏览器会自动解析为完整 URL
+  // 例如：如果当前页面是 https://82.156.155.233，则 /thumbnail/xxx 会自动变成 https://82.156.155.233/thumbnail/xxx
+  return `/thumbnail/${videoId}`;
+};
 
 // 获取骨骼视频 URL
 export const getPoseVideoUrl = (workId: string, videoType: 'reference' | 'user') => 
@@ -231,6 +254,11 @@ class ApiService {
     return this.makeRequest(`${this.baseUrl}/reference-videos`);
   }
 
+  // 获取用户视频列表
+  async getUserVideos(): Promise<{ success: boolean; videos: any[] }> {
+    return this.makeRequest(`${this.baseUrl}/user-videos`);
+  }
+
   // 上传用户视频并提取骨骼数据
   async uploadUserVideo(
     userVideo: File,
@@ -243,6 +271,35 @@ class ApiService {
     return this.makeRequest(`${this.baseUrl}/upload-user-video`, {
       method: 'POST',
       body: formData,
+    });
+  }
+
+  // 上传用户视频到永久存储（支持标题）
+  async uploadUserVideoPermanent(
+    userVideo: File,
+    title: string
+  ): Promise<UploadResult> {
+    const formData = new FormData();
+    formData.append('video', userVideo);
+    formData.append('title', title);
+
+    return this.makeRequest(`${this.baseUrl}/upload-user-video-permanent`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  // 从workId上传用户视频到永久存储（支持标题）
+  async uploadUserVideoFromWork(
+    workId: string,
+    title: string
+  ): Promise<UploadResult> {
+    return this.makeRequest(`${this.baseUrl}/upload-user-video-from-work`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ work_id: workId, title }),
     });
   }
 
@@ -451,6 +508,71 @@ class ApiService {
       method: 'POST',
     });
   }
+
+  // ==================== 评论相关 API ====================
+
+  // 获取评论列表
+  async getComments(videoId: string, videoType: 'reference' | 'user' = 'user'): Promise<{
+    success: boolean;
+    comments: Comment[];
+  }> {
+    return this.makeRequest(`${this.baseUrl}/comments/${videoId}?video_type=${videoType}`);
+  }
+
+  // 添加评论
+  async addComment(
+    videoId: string,
+    videoType: 'reference' | 'user',
+    content: string
+  ): Promise<{
+    success: boolean;
+    comment?: Comment;
+    error?: string;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ video_id: videoId, video_type: videoType, content }),
+    });
+  }
+
+  // 切换点赞状态（点赞/取消点赞）
+  async toggleLike(
+    videoId: string,
+    videoType: 'reference' | 'user' = 'user'
+  ): Promise<{ success: boolean; is_liked?: boolean; like_count?: number; error?: string }> {
+    return this.makeRequest(`${this.baseUrl}/likes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        video_id: videoId,
+        video_type: videoType,
+      }),
+    });
+  }
+
+  // 获取视频的点赞信息
+  async getLikeInfo(
+    videoId: string,
+    videoType: 'reference' | 'user' = 'user'
+  ): Promise<{ success: boolean; like_count?: number; is_liked?: boolean; error?: string }> {
+    return this.makeRequest(`${this.baseUrl}/likes/${videoId}?video_type=${videoType}`);
+  }
+}
+
+// 评论类型定义
+export interface Comment {
+  id: number;
+  video_id: string;
+  video_type: string;
+  user_id: number;
+  username: string;
+  content: string;
+  created_at: string;
 }
 
 // 创建API服务实例

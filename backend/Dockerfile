@@ -27,14 +27,20 @@ RUN echo "=== 安装所有系统依赖 ===" && \
     apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
+        libx264-dev \
+        libxvidcore-dev \
+        libvpx-dev \
         libgl1-mesa-dri \
         libglib2.0-0 \
         libsm6 \
         libxext6 \
         libxrender-dev \
         libgomp1 && \
-    echo "所有依赖安装完成，验证FFmpeg版本..." && \
+    echo "所有依赖安装完成，验证FFmpeg和FFprobe..." && \
     ffmpeg -version && \
+    ffprobe -version && \
+    echo "检查编码器支持..." && \
+    ffmpeg -encoders | grep -E "(libx264|libxvid|libvpx)" && \
     echo "清理缓存..." && \
     rm -rf /var/lib/apt/lists/* && \
     echo "=== 系统依赖安装完成 ==="

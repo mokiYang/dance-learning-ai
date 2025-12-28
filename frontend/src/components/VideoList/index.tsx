@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { apiService, ReferenceVideo, getVideoUrl, getThumbnailUrl } from "../../services/api";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { apiService, ReferenceVideo } from "../../services/api";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
+import VideoCard from "../VideoCard";
+import Tabs from "../Tabs";
 import "./index.less";
+
+type TabType = 'reference' | 'user';
 
 const VideoList: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // 从 URL 参数读取 tab，默认为 'reference'
+  const tabFromUrl = (searchParams.get('tab') || 'reference') as TabType;
+  const [activeTab, setActiveTab] = useState<TabType>(
+    tabFromUrl === 'user' ? 'user' : 'reference'
+  );
   const [videos, setVideos] = useState<ReferenceVideo[]>([]);
+  const [userVideos, setUserVideos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const uploadRef = useRef<VideoUploadRef>(null);
@@ -22,8 +34,20 @@ const VideoList: React.FC = () => {
   );
   const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
 
+  // 初始化时从 URL 读取 tab
   useEffect(() => {
-    fetchVideos();
+    const tabFromUrl = (searchParams.get('tab') || 'reference') as TabType;
+    if (tabFromUrl === 'user' || tabFromUrl === 'reference') {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'reference') {
+      fetchVideos();
+    } else {
+      fetchUserVideos();
+    }
 
     // 监听自定义上传事件
     const handleUploadTrigger = () => {
@@ -40,7 +64,7 @@ const VideoList: React.FC = () => {
       pollingIntervalsRef.current.forEach(interval => clearInterval(interval));
       pollingIntervalsRef.current.clear();
     };
-  }, []);
+  }, [activeTab]);
 
   const fetchVideos = async (forceRefresh: boolean = false) => {
     // 如果强制刷新，清除缓存
@@ -98,8 +122,42 @@ const VideoList: React.FC = () => {
     }
   };
 
-  const handleVideoClick = (video_id: string) => {
-    navigate(`/video/${video_id}`);
+  const fetchUserVideos = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await apiService.getUserVideos();
+      if (response.success) {
+        setUserVideos(response.videos || []);
+      } else {
+        setError("获取用户视频列表失败");
+      }
+    } catch (err) {
+      setError("网络错误，请稍后重试");
+      console.error("获取用户视频列表失败:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 切换 tab 时更新 URL
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    // 更新 URL 参数，保留其他参数
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.set('tab', tab);
+    setSearchParams(newSearchParams, { replace: true });
+  };
+
+  const handleVideoClick = (video_id: string, isUserVideo: boolean = false) => {
+    // 传递当前 tab 信息到视频详情页
+    const tabParam = activeTab === 'user' ? '?tab=user' : '?tab=reference';
+    if (isUserVideo) {
+      navigate(`/user-video/${video_id}${tabParam}`);
+    } else {
+      navigate(`/video/${video_id}${tabParam}`);
+    }
   };
 
   const handleUploadSuccess = (taskId?: string, videoId?: string) => {
@@ -192,63 +250,64 @@ const VideoList: React.FC = () => {
         onUploadSuccess={handleUploadSuccess}
       />
       
+      {/* Tab 切换 */}
+      <div className="video-tabs-wrapper">
+        <Tabs
+          items={[
+            { key: 'reference', label: '教学视频' },
+            { key: 'user', label: '用户视频' }
+          ]}
+          activeKey={activeTab}
+          onChange={(key) => handleTabChange(key as TabType)}
+        />
+      </div>
+      
       {/* 视频网格 */}
       <div className="video-grid">
-        {videos.length === 0 ? (
-          <div className="empty-state">
-            <p>暂无视频，快来上传第一个吧！</p>
-          </div>
+        {activeTab === 'reference' ? (
+          videos.length === 0 ? (
+            <div className="empty-state">
+              <p>暂无视频，快来上传第一个吧！</p>
+            </div>
+          ) : (
+            videos.map((video) => {
+              const isProcessing = processingTasks.has(video.video_id);
+              const taskInfo = processingTasks.get(video.video_id);
+              
+              return (
+                <VideoCard
+                  key={video.video_id || video.filename}
+                  videoId={video.video_id}
+                  videoType="reference"
+                  title={video.title || video.filename}
+                  author={video.author}
+                  thumbnailPath={video.thumbnail_path}
+                  onClick={() => handleVideoClick(video.video_id, false)}
+                  isProcessing={isProcessing}
+                  processingProgress={taskInfo?.progress || 0}
+                />
+              );
+            })
+          )
         ) : (
-          videos.map((video) => {
-            const isProcessing = processingTasks.has(video.video_id);
-            const taskInfo = processingTasks.get(video.video_id);
-            
-            return (
-              <div
-                key={video.filename}
-                className={`video-card ${isProcessing ? 'processing' : ''}`}
-                onClick={() => !isProcessing && handleVideoClick(video.video_id)}
-              >
-                <div className="video-thumbnail-wrapper">
-                  {video.thumbnail_path ? (
-                    <img
-                      className="video-thumbnail"
-                      src={getThumbnailUrl(video.video_id)}
-                      alt={video.title || video.filename}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <video
-                      className="video-thumbnail"
-                      src={getVideoUrl(video.video_id)}
-                      preload="metadata"
-                      muted
-                      playsInline
-                    />
-                  )}
-                  {isProcessing && (
-                    <div className="processing-overlay">
-                      <div className="processing-spinner"></div>
-                      <div className="processing-text">
-                        正在提取骨骼数据...
-                        <br />
-                        <span className="processing-progress">{taskInfo?.progress || 0}%</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="video-info">
-                  <h3 className="video-title">{video.title}</h3>
-                  {video.author && (
-                    <p className="video-author">👤 {video.author}</p>
-                  )}
-                  {video.description && (
-                    <p className="video-description">{video.description}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })
+          userVideos.length === 0 ? (
+            <div className="empty-state">
+              <p>暂无用户视频</p>
+            </div>
+          ) : (
+            userVideos.map((video) => {
+              return (
+                <VideoCard
+                  key={video.video_id}
+                  videoId={video.video_id}
+                  videoType="user"
+                  title={video.title || video.filename}
+                  author={video.author}
+                  onClick={() => handleVideoClick(video.video_id, true)}
+                />
+              );
+            })
+          )
         )}
       </div>
     </div>

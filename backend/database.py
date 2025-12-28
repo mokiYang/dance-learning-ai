@@ -119,6 +119,12 @@ class DanceDatabase:
         except sqlite3.OperationalError:
             pass
         
+        try:
+            cursor.execute("ALTER TABLE user_videos ADD COLUMN title TEXT")
+            print("已添加 title 字段到 user_videos 表")
+        except sqlite3.OperationalError:
+            pass
+        
         # 创建视频比较记录表
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS comparison_records (
@@ -166,6 +172,32 @@ class DanceDatabase:
             )
         ''')
         
+        # 创建评论表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                video_type TEXT NOT NULL,  -- 'reference' 或 'user'
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # 创建点赞表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS likes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                video_type TEXT NOT NULL,  -- 'reference' 或 'user'
+                user_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(video_id, video_type, user_id),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
         # 创建索引以提高查询性能
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)')
@@ -176,6 +208,10 @@ class DanceDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_pose_data_video_id ON pose_data(video_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_async_tasks_task_id ON async_tasks(task_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_async_tasks_video_id ON async_tasks(video_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_video_id ON comments(video_id, video_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_likes_video_id ON likes(video_id, video_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_likes_user_id ON likes(user_id)')
         
         conn.commit()
         conn.close()
@@ -207,7 +243,7 @@ class DanceDatabase:
     
     def add_user_video(self, video_id: str, filename: str, file_path: str,
                       duration: float = None, fps: float = None,
-                      user_id: str = None, session_id: str = None) -> bool:
+                      user_id: str = None, session_id: str = None, title: str = None) -> bool:
         """添加用户视频记录"""
         try:
             conn = self.get_connection()
@@ -215,9 +251,9 @@ class DanceDatabase:
             
             cursor.execute('''
                 INSERT INTO user_videos 
-                (video_id, filename, file_path, duration, fps, user_id, session_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (video_id, filename, file_path, duration, fps, user_id, session_id))
+                (video_id, filename, file_path, duration, fps, user_id, session_id, title)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (video_id, filename, file_path, duration, fps, user_id, session_id, title))
             
             conn.commit()
             conn.close()
@@ -848,6 +884,136 @@ class DanceDatabase:
         except Exception as e:
             print(f"获取视频任务列表失败: {e}")
             return []
+    
+    # ========== 评论相关方法 ==========
+    
+    def add_comment(self, video_id: str, video_type: str, user_id: int, content: str) -> bool:
+        """添加评论"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO comments (video_id, video_type, user_id, content)
+                VALUES (?, ?, ?, ?)
+            ''', (video_id, video_type, user_id, content))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"添加评论失败: {e}")
+            return False
+    
+    def get_comments(self, video_id: str, video_type: str = None) -> List[Dict]:
+        """获取视频的评论列表"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            if video_type:
+                cursor.execute('''
+                    SELECT c.*, u.username
+                    FROM comments c
+                    JOIN users u ON c.user_id = u.id
+                    WHERE c.video_id = ? AND c.video_type = ?
+                    ORDER BY c.created_at DESC
+                ''', (video_id, video_type))
+            else:
+                cursor.execute('''
+                    SELECT c.*, u.username
+                    FROM comments c
+                    JOIN users u ON c.user_id = u.id
+                    WHERE c.video_id = ?
+                    ORDER BY c.created_at DESC
+                ''', (video_id,))
+            
+            comments = []
+            for row in cursor.fetchall():
+                comments.append(dict(row))
+            
+            conn.close()
+            return comments
+        except Exception as e:
+            print(f"获取评论列表失败: {e}")
+            return []
+    
+    def toggle_like(self, video_id: str, video_type: str, user_id: int) -> Tuple[bool, bool]:
+        """
+        切换点赞状态（如果已点赞则取消，未点赞则点赞）
+        返回: (是否成功, 当前是否已点赞)
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # 检查是否已点赞
+            cursor.execute('''
+                SELECT id FROM likes 
+                WHERE video_id = ? AND video_type = ? AND user_id = ?
+            ''', (video_id, video_type, user_id))
+            
+            existing_like = cursor.fetchone()
+            
+            if existing_like:
+                # 取消点赞
+                cursor.execute('''
+                    DELETE FROM likes 
+                    WHERE video_id = ? AND video_type = ? AND user_id = ?
+                ''', (video_id, video_type, user_id))
+                conn.commit()
+                conn.close()
+                return True, False
+            else:
+                # 添加点赞
+                cursor.execute('''
+                    INSERT INTO likes (video_id, video_type, user_id)
+                    VALUES (?, ?, ?)
+                ''', (video_id, video_type, user_id))
+                conn.commit()
+                conn.close()
+                return True, True
+        except Exception as e:
+            print(f"切换点赞状态失败: {e}")
+            return False, False
+    
+    def get_like_count(self, video_id: str, video_type: str) -> int:
+        """获取视频的点赞数量"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT COUNT(*) as count FROM likes 
+                WHERE video_id = ? AND video_type = ?
+            ''', (video_id, video_type))
+            
+            result = cursor.fetchone()
+            count = result['count'] if result else 0
+            
+            conn.close()
+            return count
+        except Exception as e:
+            print(f"获取点赞数量失败: {e}")
+            return 0
+    
+    def is_liked(self, video_id: str, video_type: str, user_id: int) -> bool:
+        """检查用户是否已点赞该视频"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id FROM likes 
+                WHERE video_id = ? AND video_type = ? AND user_id = ?
+            ''', (video_id, video_type, user_id))
+            
+            result = cursor.fetchone()
+            conn.close()
+            return result is not None
+        except Exception as e:
+            print(f"检查点赞状态失败: {e}")
+            return False
 
 # 全局数据库实例
 db = DanceDatabase()

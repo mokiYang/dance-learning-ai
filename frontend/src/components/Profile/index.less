@@ -2,6 +2,7 @@
   min-height: calc(100vh - 50px - 56px);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   margin-top: 50px;
+  padding-bottom: 80px; // 给底部TabBar留空间
 
   .loading {
     display: flex;
@@ -18,6 +19,7 @@
   padding: 32px 20px;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
 
   .avatar {
     width: 80px;
@@ -48,7 +50,30 @@
       font-size: 24px;
       font-weight: 700;
       color: #333333;
-      margin: 0 0 8px;
+      margin: 0 0 6px;
+    }
+
+    .btn-logout-header {
+      display: block;
+      margin: 0 auto 8px;
+      padding: 4px 8px;
+      background: transparent;
+      color: #999;
+      font-size: 12px;
+      font-weight: 400;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: color 0.2s ease;
+      line-height: 1;
+
+      &:hover {
+        color: #666;
+      }
+
+      &:active {
+        color: #333;
+      }
     }
 
     .email {
@@ -59,116 +84,56 @@
   }
 }
 
-.profile-content {
+
+.profile-videos-section {
   padding: 20px;
+  background: #ffffff;
+  margin: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 
-  .info-section,
-  .features-section {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  .video-tabs-wrapper {
+    margin-bottom: 24px;
   }
 
-  .section-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #333333;
-    margin: 0 0 16px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #f0f0f0;
+  .videos-loading {
+    padding: 40px 0;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
   }
 
-  .info-list {
-    .info-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 0;
-      border-bottom: 1px solid #f5f5f5;
+  .videos-empty {
+    padding: 60px 20px;
+    text-align: center;
+    color: #999;
 
-      &:last-child {
-        border-bottom: none;
-      }
+    p {
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
 
-      .info-label {
-        font-size: 14px;
-        color: #666666;
-      }
-
-      .info-value {
-        font-size: 14px;
-        color: #333333;
-        font-weight: 500;
-      }
+    .empty-hint {
+      font-size: 12px;
+      color: #bbb;
     }
   }
 
-  .feature-list {
+  .profile-videos-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-
-    .feature-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: linear-gradient(135deg, #f5f7fa 0%, #e8ebf0 100%);
-      border-radius: 8px;
-      transition: all 0.3s ease;
-
-      &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
-
-      .feature-icon {
-        font-size: 32px;
-        margin-bottom: 8px;
-      }
-
-      .feature-text {
-        font-size: 13px;
-        color: #555555;
-        font-weight: 500;
-      }
-    }
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+    padding: 20px 0;
   }
 }
 
-.profile-actions {
-  padding: 0 20px;
-
-  .btn-logout {
-    width: 100%;
-    height: 48px;
-    background: #ffffff;
-    color: #ff4d4f;
-    font-size: 16px;
-    font-weight: 600;
-    border: 2px solid #ff4d4f;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-
-    &:hover {
-      background: #ff4d4f;
-      color: #ffffff;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(255, 77, 79, 0.4);
-    }
-
-    &:active {
-      transform: translateY(0);
-    }
-  }
-}
 
 // 移动端适配
 @media (max-width: 768px) {
+  .profile-container {
+    padding-bottom: 70px; // 移动端给底部TabBar留空间
+  }
+
   .profile-header {
     padding: 24px 16px;
 
@@ -185,7 +150,13 @@
     .user-info {
       .username {
         font-size: 20px;
+        margin-bottom: 4px;
+      }
+
+      .btn-logout-header {
         margin-bottom: 6px;
+        padding: 3px 6px;
+        font-size: 11px;
       }
 
       .email {
@@ -194,76 +165,36 @@
     }
   }
 
-  .profile-content {
+
+  .profile-videos-section {
     padding: 16px 12px;
+    margin: 16px 12px 16px;
 
-    .info-section,
-    .features-section {
-      padding: 16px;
-      margin-bottom: 12px;
-      border-radius: 10px;
+    .video-tabs-wrapper {
+      margin-bottom: 16px;
     }
 
-    .section-title {
-      font-size: 16px;
-      margin-bottom: 12px;
-      padding-bottom: 10px;
+    .videos-loading {
+      padding: 30px 0;
+      font-size: 13px;
     }
 
-    .info-list {
-      .info-item {
-        padding: 10px 0;
+    .videos-empty {
+      padding: 40px 16px;
 
-        .info-label,
-        .info-value {
-          font-size: 13px;
-        }
+      p {
+        font-size: 13px;
+      }
+
+      .empty-hint {
+        font-size: 11px;
       }
     }
 
-    .feature-list {
-      gap: 10px;
-
-      .feature-item {
-        padding: 16px 12px;
-
-        .feature-icon {
-          font-size: 28px;
-          margin-bottom: 6px;
-        }
-
-        .feature-text {
-          font-size: 12px;
-        }
-
-        &:hover {
-          transform: none; // 移动端禁用hover动画
-        }
-
-        &:active {
-          transform: scale(0.98);
-          background: linear-gradient(135deg, #e8ebf0 0%, #dce0e6 100%);
-        }
-      }
-    }
-  }
-
-  .profile-actions {
-    padding: 0 12px 12px;
-
-    .btn-logout {
-      height: 44px;
-      font-size: 15px;
-
-      &:hover {
-        transform: none; // 移动端禁用hover动画
-      }
-
-      &:active {
-        transform: scale(0.98);
-        background: #ff4d4f;
-        color: #ffffff;
-      }
+    .profile-videos-grid {
+      grid-template-columns: repeat(2, 1fr); // 移动端双栏
+      gap: 12px;
+      padding: 12px 0;
     }
   }
 }

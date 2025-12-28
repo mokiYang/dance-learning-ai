@@ -2,9 +2,15 @@
 
 # 舞蹈姿势对比服务启动脚本
 
+# 获取脚本所在目录（backend目录）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 echo "=================================================="
 echo "舞蹈姿势对比服务"
 echo "=================================================="
+echo "工作目录: $SCRIPT_DIR"
+echo ""
 
 # 检查Python是否安装
 if ! command -v python3 &> /dev/null; then
@@ -15,6 +21,20 @@ fi
 # 检查pip是否安装
 if ! command -v pip3 &> /dev/null; then
     echo "错误: 未找到pip3，请先安装pip3"
+    exit 1
+fi
+
+# 检查 requirements.txt 是否存在
+if [ ! -f "requirements.txt" ]; then
+    echo "错误: 未找到 requirements.txt 文件"
+    echo "当前目录: $(pwd)"
+    exit 1
+fi
+
+# 检查 app.py 是否存在
+if [ ! -f "app.py" ]; then
+    echo "错误: 未找到 app.py 文件"
+    echo "当前目录: $(pwd)"
     exit 1
 fi
 
@@ -34,7 +54,7 @@ pip install -r requirements.txt
 
 # 创建必要目录
 echo "创建必要目录..."
-mkdir -p uploads temp
+mkdir -p uploads temp thumbnails video_storage/videos video_storage/thumbnails video_storage/temp
 
 # 启动服务
 echo "启动Flask服务..."

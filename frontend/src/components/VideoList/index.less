@@ -3,6 +3,10 @@
   padding: 70px 20px 80px 20px; // 顶部给Header留空间，底部给TabBar留空间
 }
 
+.video-tabs-wrapper {
+  margin-bottom: 24px;
+}
+
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -21,132 +25,7 @@
   border: 2px dashed #e0e0e0;
 }
 
-.video-card {
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-  cursor: pointer;
-
-  &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-  }
-
-  &:active {
-    transform: translateY(-2px);
-  }
-  
-  // 处理中的视频卡片样式
-  &.processing {
-    opacity: 0.85;
-    cursor: not-allowed;
-    
-    &:hover {
-      transform: none;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-    }
-    
-    .video-thumbnail {
-      filter: grayscale(50%) brightness(0.9);
-    }
-  }
-}
-
-.video-thumbnail-wrapper {
-  position: relative;
-  width: 100%;
-  height: 240px;
-  overflow: hidden;
-}
-
-.video-thumbnail {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-// 处理中的遮罩层
-.processing-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: white;
-}
-
-.processing-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #ffffff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.processing-text {
-  font-size: 14px;
-  font-weight: 500;
-  text-align: center;
-  line-height: 1.5;
-}
-
-.processing-progress {
-  font-size: 16px;
-  font-weight: 600;
-  color: #667eea;
-}
-
-.video-info {
-  padding: 16px;
-}
-
-.video-title {
-  font-size: 17px;
-  font-weight: 600;
-  margin: 0 0 10px 0;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.video-author {
-  font-size: 14px;
-  color: #667eea;
-  font-weight: 500;
-  margin: 0 0 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.video-description {
-  font-size: 13px;
-  color: #666;
-  line-height: 1.5;
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+// 视频卡片样式已移至 VideoCard 组件
 
 .loading-container {
   display: flex;
@@ -203,50 +82,25 @@
 // 移动端适配
 @media (max-width: 768px) {
   .video-list-container {
-    padding: 60px 15px 70px 15px;
+    padding: 60px 12px 70px 12px;
   }
 
   .video-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(2, 1fr); // 双栏布局
+    gap: 12px;
   }
 
-  .video-card {
-    .video-thumbnail-wrapper {
-      height: 200px;
+  .video-tabs {
+    margin-bottom: 16px;
+    padding: 3px;
+    
+    .tab-button {
+      padding: 10px 16px;
+      font-size: 14px;
     }
+  }
 
-    .video-info {
-      padding: 12px;
-    }
-
-    .video-title {
-      font-size: 15px;
-    }
-
-    .video-author,
-    .video-description {
-      font-size: 13px;
-    }
-  }
-  
-  .processing-overlay {
-    gap: 8px;
-  }
-  
-  .processing-spinner {
-    width: 32px;
-    height: 32px;
-    border-width: 3px;
-  }
-  
-  .processing-text {
-    font-size: 13px;
-  }
-  
-  .processing-progress {
-    font-size: 14px;
-  }
+  // 视频卡片样式已移至 VideoCard 组件
 
   .empty-state {
     padding: 60px 16px;
@@ -256,40 +110,24 @@
 
 @media (max-width: 480px) {
   .video-list-container {
-    padding: 56px 12px 65px 12px;
+    padding: 56px 10px 65px 10px;
   }
 
   .video-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr); // 双栏布局
+    gap: 10px;
   }
 
-  .video-card {
-    .video-thumbnail-wrapper {
-      height: 180px;
+  .video-tabs {
+    margin-bottom: 12px;
+    
+    .tab-button {
+      padding: 8px 12px;
+      font-size: 13px;
     }
+  }
 
-    &:hover {
-      transform: none;
-    }
-
-    &:active {
-      transform: scale(0.98);
-    }
-  }
-  
-  .processing-spinner {
-    width: 28px;
-    height: 28px;
-  }
-  
-  .processing-text {
-    font-size: 12px;
-  }
-  
-  .processing-progress {
-    font-size: 13px;
-  }
+  // 视频卡片样式已移至 VideoCard 组件
 
   .empty-state {
     padding: 40px 12px;
