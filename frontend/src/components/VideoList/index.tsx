@@ -4,6 +4,7 @@ import { apiService, ReferenceVideo } from "../../services/api";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
 import VideoCard from "../VideoCard";
 import Tabs from "../Tabs";
+import { showToast } from "../Toast/ToastContainer";
 import "./index.less";
 
 type TabType = 'reference' | 'user';
@@ -164,7 +165,7 @@ const VideoList: React.FC = () => {
     // 上传成功后立即强制刷新视频列表（清除缓存）
     fetchVideos(true);
     
-    // 如果有taskId，开始轮询该视频的处理进度
+    // 如果有taskId，开始轮询该视频的处理进度（只有教学视频需要）
     if (taskId && videoId) {
       startPollingTask(taskId, videoId);
     }

@@ -1,9 +1,9 @@
 .toast {
   position: fixed;
   top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10000;
+  left: 20px;
+  right: 20px;
+  z-index: 10001; // 确保在弹窗之上（弹窗通常是 2000-2001）
   
   display: flex;
   align-items: center;
@@ -17,8 +17,8 @@
   font-weight: 500;
   color: white;
   
-  min-width: 300px;
-  max-width: 500px;
+  width: auto;
+  max-width: none;
   
   transition: all 0.3s ease;
 }
@@ -70,20 +70,20 @@
 // 显示动画
 .toast-show {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
 }
 
 // 隐藏动画
 .toast-hide {
   opacity: 0;
-  transform: translateX(-50%) translateY(-20px);
+  transform: translateY(-20px);
 }
 
 // 移动端适配
 @media (max-width: 768px) {
   .toast {
-    min-width: auto;
-    max-width: calc(100vw - 40px);
+    left: 16px;
+    right: 16px;
     font-size: 14px;
     padding: 12px 16px;
   }

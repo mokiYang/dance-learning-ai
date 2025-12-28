@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiService, ReferenceVideo, ComparisonResult } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
 import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
+import UploadFormModal from '../UploadFormModal';
+import { extractThumbnailFromBlob } from '../../utils/videoThumbnail';
 import './index.less';
 
 const VideoResult: React.FC = () => {
@@ -27,6 +29,7 @@ const VideoResult: React.FC = () => {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [videoTitle, setVideoTitle] = useState('');
+  const [videoPoster, setVideoPoster] = useState<string | undefined>(undefined);
 
   // 检查是否有传递过来的录制视频数据
   useEffect(() => {
@@ -41,6 +44,19 @@ const VideoResult: React.FC = () => {
         // 将Blob转换为File对象
         const file = new File([recordedVideo], videoInfo.filename, { type: recordedVideo.type });
         setSelectedFile(file);
+        
+        // 从视频Blob中提取第一帧作为封面
+        extractThumbnailFromBlob(recordedVideo)
+          .then((thumbnailUrl) => {
+            if (thumbnailUrl) {
+              setVideoPoster(thumbnailUrl);
+              console.log('成功生成视频封面');
+            }
+          })
+          .catch((error) => {
+            console.error('生成视频封面失败:', error);
+            // 失败不影响功能，只是没有封面
+          });
         
         console.log('接收到录制的视频数据:', videoInfo);
       }
@@ -175,7 +191,7 @@ const VideoResult: React.FC = () => {
         const comparisonResult = await apiService.compareWithUploadedVideo(
           uploadResult.user_video_id,
           video.video_id,
-          0.3
+          0.4
         );
 
         if (comparisonResult.success) {
@@ -325,7 +341,7 @@ const VideoResult: React.FC = () => {
         const comparisonResult = await apiService.compareWithUploadedVideo(
           uploadResult.user_video_id,
           video.video_id,
-          0.3
+          0.4
         );
 
         if (comparisonResult.success) {
@@ -468,6 +484,7 @@ const VideoResult: React.FC = () => {
       {hasRecordedVideo ? (
         <BaseVideoPlayer
           videoSrc={recordedVideoUrl}
+          poster={videoPoster}
           onBack={handleBackToPlayer}
           rightButtons={rightButtons}
           loading={loading}
@@ -495,60 +512,52 @@ const VideoResult: React.FC = () => {
       {/* 对比页现在是独立路由，不再使用浮层 */}
 
       {/* 上传表单弹窗 */}
-      {showUploadForm && (
-        <div className="upload-form-overlay" onClick={handleUploadCancel}>
-          <div className="upload-form" onClick={(e) => e.stopPropagation()}>
-            <div className="form-header">
-              <h3>上传用户视频</h3>
-              <button className="close-button" onClick={handleUploadCancel}>
-                ×
-              </button>
-            </div>
-
-            <div className="form-content">
-              <div className="form-group">
-                <label htmlFor="video-title">视频标题 *</label>
-                <input
-                  id="video-title"
-                  type="text"
-                  value={videoTitle}
-                  onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="请输入视频标题"
-                  required
-                  autoFocus
-                />
-              </div>
-              
-              <div className="form-actions">
-                <button
-                  className="cancel-button"
-                  onClick={handleUploadCancel}
-                  disabled={uploading}
-                >
-                  取消
-                </button>
-                <button
-                  className="submit-button"
-                  onClick={handleUploadVideo}
-                  disabled={uploading || !videoTitle.trim()}
-                >
-                  {uploading ? (
-                    <>
-                      <span className="upload-icon">⏳</span>
-                      上传中...
-                    </>
-                  ) : (
-                    <>
-                      <span className="upload-icon">📤</span>
-                      确认上传
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+      <UploadFormModal
+        visible={showUploadForm}
+        title="上传用户视频"
+        onClose={handleUploadCancel}
+        showOverlay={true}
+      >
+        <div className="form-group">
+          <label htmlFor="video-title">视频标题 *</label>
+          <input
+            id="video-title"
+            type="text"
+            value={videoTitle}
+            onChange={(e) => setVideoTitle(e.target.value)}
+            placeholder="请输入视频标题"
+            required
+            autoFocus
+          />
         </div>
-      )}
+        
+        <div className="form-actions">
+          <button
+            className="cancel-button"
+            onClick={handleUploadCancel}
+            disabled={uploading}
+          >
+            取消
+          </button>
+          <button
+            className="submit-button"
+            onClick={handleUploadVideo}
+            disabled={uploading || !videoTitle.trim()}
+          >
+            {uploading ? (
+              <>
+                <span className="upload-icon">⏳</span>
+                上传中...
+              </>
+            ) : (
+              <>
+                <span className="upload-icon">📤</span>
+                确认上传
+              </>
+            )}
+          </button>
+        </div>
+      </UploadFormModal>
 
       {/* 浮层loading */}
       {isAnalyzing && (

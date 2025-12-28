@@ -463,7 +463,7 @@ const VideoPlayer: React.FC = () => {
   // 构建右侧按钮配置
   const rightButtons: ControlButton[] = [];
   
-  // 评论按钮（始终显示）
+  // 评论按钮（点击开始录制后隐藏，包括倒计时期间）
   rightButtons.push({
     label: (
       <>
@@ -477,7 +477,7 @@ const VideoPlayer: React.FC = () => {
     className: 'btn-comment',
     onClick: handleShowComments,
     disabled: !isAuthenticated,
-    visible: true,
+    visible: !isRecording && !hasStartedCountdown, // 点击开始录制后（包括倒计时期间）隐藏评论按钮
   });
   
   if (isAuthenticated) {

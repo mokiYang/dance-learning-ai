@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import { showToast } from '../Toast/ToastContainer';
 import './index.less';
 
 interface Comment {
@@ -65,11 +66,11 @@ const CommentModal: React.FC<CommentModalProps> = ({
           onCommentSubmit();
         }
       } else {
-        alert('评论失败，请重试');
+        showToast(response.error || '评论失败，请重试', 'error');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('提交评论失败:', error);
-      alert('评论失败，请检查网络连接');
+      showToast(error?.message || '评论失败，请检查网络连接', 'error');
     } finally {
       setSubmitting(false);
     }

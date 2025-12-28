@@ -308,7 +308,7 @@ class ApiService {
   async compareWithUploadedVideo(
     userVideoId: string,
     referenceVideoId: string,
-    threshold: number = 0.3
+    threshold: number = 0.4
   ): Promise<ComparisonResult> {
     const formData = new FormData();
     formData.append('user_video_id', userVideoId);
@@ -396,6 +396,11 @@ class ApiService {
   // 获取标记骨骼的视频URL（用于直接播放）
   getPoseVideoUrl(workId: string, videoType: 'reference' | 'user'): string {
     return `${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`;
+  }
+
+  // 获取标记骨骼的视频缩略图URL（用于poster）
+  getPoseVideoThumbnailUrl(workId: string, videoType: 'reference' | 'user'): string {
+    return `${SERVER_BASE_URL}/api/pose-video-thumbnail/${workId}/${videoType}`;
   }
 
   // 获取任务状态

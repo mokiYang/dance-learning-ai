@@ -39,270 +39,141 @@
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
 }
 
-.upload-icon {
-  font-size: 18px;
-  animation: uploadIconPulse 2s infinite;
+// 注意：上传表单的基础样式已移至 UploadFormModal 组件
+// 这里只保留 VideoUpload 特有的样式
+
+// 视频类型选择器（VideoUpload 特有）
+.video-type-label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 14px;
 }
 
-@keyframes uploadIconPulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-}
-
-// 上传表单样式
-.upload-form {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e2e8f0;
-  width: 90%;
-  max-width: 500px;
-  overflow: hidden;
-  z-index: 1001;
-  max-height: 90vh;
+.video-type-selector {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
 
-  // 添加遮罩层
-  &::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: -1;
+.video-type-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f7fafc;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+
+  &:hover {
+    border-color: #cbd5e0;
+    background: #edf2f7;
+  }
+
+  &.active {
+    border-color: #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
   }
 }
 
-.form-content {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-}
-
-.form-header h3 {
-  margin: 0;
-  color: #2d3748;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.close-button {
-  background: none;
-  border: none;
+.option-icon {
   font-size: 24px;
-  color: #718096;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.close-button:hover {
-  background-color: #e2e8f0;
+.video-type-option.active .option-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.option-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.option-title {
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.video-type-option.active .option-title {
+  color: #667eea;
+}
+
+.option-desc {
+  font-size: 13px;
+  color: #718096;
+  line-height: 1.4;
+}
+
+.video-type-option.active .option-desc {
   color: #4a5568;
 }
 
-.file-info {
-  margin-bottom: 20px;
-  padding: 12px 16px;
-  background: #f7fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.file-name {
-  font-weight: 500;
-  color: #2d3748;
-  word-break: break-all;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: #2d3748;
-  font-size: 14px;
-
-  .auto-filled-hint {
-    font-size: 12px;
-    font-weight: 400;
-    color: #667eea;
-    margin-left: 6px;
-  }
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 12px 16px;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-  font-family: inherit;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.form-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 24px;
-}
-
-.cancel-button {
-  background: #e2e8f0;
-  color: #4a5568;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.cancel-button:hover:not(:disabled) {
-  background: #cbd5e0;
-  color: #2d3748;
-}
-
-.submit-button {
+.option-check {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.submit-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-  transform: translateY(-1px);
-}
-
-.submit-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.cancel-button:disabled,
-.submit-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
 }
 
 // 移动端适配
 @media (max-width: 768px) {
-  .upload-form {
-    width: 95%;
-    max-height: 85vh;
-    border-radius: 8px;
-  }
-
-  .form-header {
-    padding: 16px 20px;
-
-    h3 {
-      font-size: 16px;
-    }
-  }
-
-  .form-content {
-    padding: 20px;
-  }
-
-  .file-info {
-    padding: 10px 14px;
-    margin-bottom: 16px;
-  }
-
-  .file-name {
-    font-size: 14px;
-  }
-
-  .form-group {
-    margin-bottom: 16px;
-  }
-
-  .form-group label {
-    font-size: 13px;
-    margin-bottom: 6px;
-  }
-
-  .form-group input,
-  .form-group textarea {
-    padding: 10px 14px;
-    font-size: 14px;
-  }
-
-  .form-group textarea {
-    min-height: 70px;
-  }
-
-  .form-actions {
-    margin-top: 20px;
-    gap: 10px;
-  }
-
-  .cancel-button,
-  .submit-button {
-    padding: 10px 20px;
-    font-size: 14px;
-    flex: 1;
-  }
-
   .upload-button {
     padding: 10px 20px;
     font-size: 14px;
     border-radius: 20px;
+  }
+
+  .video-type-selector {
+    gap: 10px;
+  }
+
+  .video-type-option {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .option-icon {
+    font-size: 20px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .option-title {
+    font-size: 14px;
+  }
+
+  .option-desc {
+    font-size: 12px;
+  }
+
+  .option-check {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
   }
 }

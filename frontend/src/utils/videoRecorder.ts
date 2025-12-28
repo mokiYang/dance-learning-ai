@@ -8,6 +8,8 @@ export class VideoRecorder {
   private canvasStream: MediaStream | null = null;
   private sourceVideoElement: HTMLVideoElement | null = null;
   private animationFrameId: number | null = null;
+  // 保存选择的 MIME 类型，用于创建 Blob
+  private selectedMimeType: string = 'video/webm';
 
   public async startRecording(): Promise<void> {
     try {
@@ -26,21 +28,27 @@ export class VideoRecorder {
       this.recordedChunks = [];
       
       // 检测支持的 MIME 类型
+      // 优先尝试 mp4（如果浏览器支持），否则使用 webm
       const supportedTypes = [
-        'video/webm',
-        'video/webm;codecs=vp8',
-        'video/webm;codecs=vp9',
-        'video/mp4',
-        'video/ogg;codecs=theora'
+        'video/mp4;codecs=h264',  // 优先尝试 H.264 编码的 MP4
+        'video/mp4',               // 通用 MP4
+        'video/webm;codecs=vp9',   // VP9 编码的 WebM（质量更好）
+        'video/webm;codecs=vp8',   // VP8 编码的 WebM
+        'video/webm',              // 通用 WebM
+        'video/ogg;codecs=theora'  // Ogg Theora（备用）
       ];
       
       let selectedType = '';
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
+          console.log(`[视频录制] 选择格式: ${type}`);
           break;
         }
       }
+      
+      // 保存选择的格式，用于后续创建 Blob
+      this.selectedMimeType = selectedType;
       
       if (!selectedType) {
         throw new Error('浏览器不支持任何可用的录制格式');
@@ -124,17 +132,20 @@ export class VideoRecorder {
       this.canvasStream = this.canvas.captureStream(30); // 30fps
       
       // 检测支持的 MIME 类型
+      // 优先尝试 mp4（如果浏览器支持），否则使用 webm
       const supportedTypes = [
-        'video/webm',
-        'video/webm;codecs=vp8',
-        'video/webm;codecs=vp9',
-        'video/mp4'
+        'video/mp4;codecs=h264',  // 优先尝试 H.264 编码的 MP4
+        'video/mp4',               // 通用 MP4
+        'video/webm;codecs=vp9',   // VP9 编码的 WebM（质量更好）
+        'video/webm;codecs=vp8',   // VP8 编码的 WebM
+        'video/webm'               // 通用 WebM
       ];
       
       let selectedType = '';
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
+          console.log(`[视频录制] 选择格式: ${type}`);
           break;
         }
       }
@@ -142,6 +153,9 @@ export class VideoRecorder {
       if (!selectedType) {
         throw new Error('浏览器不支持任何可用的录制格式');
       }
+      
+      // 保存选择的格式
+      this.selectedMimeType = selectedType;
       
       // 使用 Canvas 流创建 MediaRecorder
       this.mediaRecorder = new MediaRecorder(this.canvasStream, {
@@ -169,17 +183,21 @@ export class VideoRecorder {
       this.recordedChunks = [];
       this.stream = stream;
       
+      // 检测支持的 MIME 类型
+      // 优先尝试 mp4（如果浏览器支持），否则使用 webm
       const supportedTypes = [
-        'video/webm',
-        'video/webm;codecs=vp8',
-        'video/webm;codecs=vp9',
-        'video/mp4'
+        'video/mp4;codecs=h264',  // 优先尝试 H.264 编码的 MP4
+        'video/mp4',               // 通用 MP4
+        'video/webm;codecs=vp9',   // VP9 编码的 WebM（质量更好）
+        'video/webm;codecs=vp8',   // VP8 编码的 WebM
+        'video/webm'               // 通用 WebM
       ];
       
       let selectedType = '';
       for (const type of supportedTypes) {
         if (MediaRecorder.isTypeSupported(type)) {
           selectedType = type;
+          console.log(`[视频录制] 选择格式: ${type}`);
           break;
         }
       }
@@ -187,6 +205,9 @@ export class VideoRecorder {
       if (!selectedType) {
         throw new Error('浏览器不支持任何可用的录制格式');
       }
+      
+      // 保存选择的格式
+      this.selectedMimeType = selectedType;
       
       this.mediaRecorder = new MediaRecorder(this.stream, {
         mimeType: selectedType
@@ -225,10 +246,19 @@ export class VideoRecorder {
           this.canvasStream = null;
         }
         
+        // 使用实际选择的 MIME 类型创建 Blob
+        // 如果 selectedMimeType 包含 codecs，提取基础类型
+        const blobType = this.selectedMimeType.includes('mp4') 
+          ? 'video/mp4' 
+          : this.selectedMimeType.includes('webm')
+          ? 'video/webm'
+          : 'video/webm'; // 默认使用 webm
+        
         const blob = new Blob(this.recordedChunks, {
-          type: 'video/webm'
+          type: blobType
         });
         
+        console.log(`[视频录制] 创建 Blob，类型: ${blobType}，大小: ${blob.size} 字节`);
         resolve(blob);
       };
 

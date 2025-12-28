@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { apiService, FrameComparisonResult, FrameComparison } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
+import UploadFormModal from '../UploadFormModal';
 import './index.less';
 
 interface VideoComparisonProps {
@@ -32,6 +33,18 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   // 缓存视频URL，避免每次渲染都重新计算
   const referenceVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'reference'), [workId]);
   const userVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'user'), [workId]);
+  
+  // 缓存缩略图URL，用于poster
+  const referenceThumbnailUrl = React.useMemo(() => {
+    const url = apiService.getPoseVideoThumbnailUrl(workId, 'reference');
+    console.log('参考视频缩略图URL:', url);
+    return url;
+  }, [workId]);
+  const userThumbnailUrl = React.useMemo(() => {
+    const url = apiService.getPoseVideoThumbnailUrl(workId, 'user');
+    console.log('用户视频缩略图URL:', url);
+    return url;
+  }, [workId]);
 
   // 获取逐帧对比数据
   useEffect(() => {
@@ -241,60 +254,52 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   return (
     <div className="video-comparison">
       {/* 上传表单弹窗 */}
-      {showUploadForm && (
-        <div className="upload-form-overlay" onClick={handleUploadCancel}>
-          <div className="upload-form" onClick={(e) => e.stopPropagation()}>
-            <div className="form-header">
-              <h3>投稿</h3>
-              <button className="close-button" onClick={handleUploadCancel}>
-                ×
-              </button>
-            </div>
-
-            <div className="form-content">
-              <div className="form-group">
-                <label htmlFor="video-title">视频标题 *</label>
-                <input
-                  id="video-title"
-                  type="text"
-                  value={videoTitle}
-                  onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="请输入视频标题"
-                  required
-                  autoFocus
-                />
-              </div>
-              
-              <div className="form-actions">
-                <button
-                  className="cancel-button"
-                  onClick={handleUploadCancel}
-                  disabled={uploading}
-                >
-                  取消
-                </button>
-                <button
-                  className="submit-button"
-                  onClick={handleUploadSubmit}
-                  disabled={uploading || !videoTitle.trim()}
-                >
-                  {uploading ? (
-                    <>
-                      <span className="upload-icon">⏳</span>
-                      上传中...
-                    </>
-                  ) : (
-                    <>
-                      <span className="upload-icon">📤</span>
-                      确认上传
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+      <UploadFormModal
+        visible={showUploadForm}
+        title="投稿"
+        onClose={handleUploadCancel}
+        showOverlay={true}
+      >
+        <div className="form-group">
+          <label htmlFor="video-title">视频标题 *</label>
+          <input
+            id="video-title"
+            type="text"
+            value={videoTitle}
+            onChange={(e) => setVideoTitle(e.target.value)}
+            placeholder="请输入视频标题"
+            required
+            autoFocus
+          />
         </div>
-      )}
+        
+        <div className="form-actions">
+          <button
+            className="cancel-button"
+            onClick={handleUploadCancel}
+            disabled={uploading}
+          >
+            取消
+          </button>
+          <button
+            className="submit-button"
+            onClick={handleUploadSubmit}
+            disabled={uploading || !videoTitle.trim()}
+          >
+            {uploading ? (
+              <>
+                <span className="upload-icon">⏳</span>
+                上传中...
+              </>
+            ) : (
+              <>
+                <span className="upload-icon">📤</span>
+                确认上传
+              </>
+            )}
+          </button>
+        </div>
+      </UploadFormModal>
 
       <div className="comparison-header">
         <h3>视频对比分析</h3>
@@ -331,11 +336,13 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
             <video
               ref={referenceVideoRef}
               src={referenceVideoUrl}
+              poster={referenceThumbnailUrl || undefined}
               className="comparison-video"
               controls={false}
               muted
               playsInline
               preload="metadata"
+              crossOrigin="anonymous"
               onLoadedData={() => {
                 if (!referenceVideoLoaded) {
                   console.log('参考视频加载完成');
@@ -397,11 +404,13 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
             <video
               ref={userVideoRef}
               src={userVideoUrl}
+              poster={userThumbnailUrl || undefined}
               className="comparison-video"
               controls={false}
               muted
               playsInline
               preload="metadata"
+              crossOrigin="anonymous"
               onLoadedData={() => {
                 if (!userVideoLoaded) {
                   console.log('用户视频加载完成');
@@ -465,7 +474,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
           
           <div className="speed-controls">
             <span>播放速度:</span>
-            {[0.5, 1, 1.5, 2].map(speed => (
+            {[0.5, 0.75, 1].map(speed => (
               <button
                 key={speed}
                 onClick={() => setSpeed(speed)}
@@ -524,8 +533,6 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
             <tr>
               <td className="stat-label">总帧数:</td>
               <td className="stat-value">{frameData.frame_comparisons.length}</td>
-              <td className="stat-label">有效对比帧数:</td>
-              <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_pose_data && !f.pose_quality_issue).length}</td>
               <td className="stat-label">差异帧数:</td>
               <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_difference).length}</td>
             </tr>
@@ -538,13 +545,6 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                   const syncFrames = validFrames.filter(f => !f.has_difference).length;
                   return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
                 })()}
-              </td>
-              <td className="stat-label">对比时长:</td>
-              <td className="stat-value">
-                {frameData.frame_comparisons.length > 0 
-                  ? `${Math.max(...frameData.frame_comparisons.map(f => f.timestamp)).toFixed(1)}秒`
-                  : '0秒'
-                }
               </td>
               <td className="stat-label">数据质量:</td>
               <td className="stat-value">

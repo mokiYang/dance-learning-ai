@@ -133,7 +133,7 @@ class DanceDatabase:
                 reference_video_id TEXT NOT NULL,
                 user_video_id TEXT NOT NULL,
                 comparison_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                threshold REAL DEFAULT 0.3,
+                threshold REAL DEFAULT 0.4,
                 total_differences INTEGER,
                 report_path TEXT,
                 status TEXT DEFAULT 'processing',
@@ -506,14 +506,18 @@ class DanceDatabase:
             cursor = conn.cursor()
             
             if user_id:
+                # 只查询指定用户的视频，且排除临时文件路径
                 cursor.execute('''
                     SELECT * FROM user_videos 
-                    WHERE user_id = ?
+                    WHERE user_id = ? 
+                      AND (file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%')
                     ORDER BY upload_time DESC
                 ''', (user_id,))
             else:
+                # 如果没有指定user_id，只返回永久存储的视频
                 cursor.execute('''
                     SELECT * FROM user_videos 
+                    WHERE file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%'
                     ORDER BY upload_time DESC
                 ''')
             
@@ -547,7 +551,7 @@ class DanceDatabase:
             return None
     
     def add_comparison_record(self, comparison_id: str, reference_video_id: str, 
-                            user_video_id: str, threshold: float = 0.3) -> bool:
+                            user_video_id: str, threshold: float = 0.4) -> bool:
         """添加视频比较记录"""
         try:
             conn = self.get_connection()
@@ -890,6 +894,7 @@ class DanceDatabase:
     def add_comment(self, video_id: str, video_type: str, user_id: int, content: str) -> bool:
         """添加评论"""
         try:
+            print(f"[数据库] 添加评论 - video_id: {video_id}, video_type: {video_type}, user_id: {user_id}, content: {content[:50]}...")
             conn = self.get_connection()
             cursor = conn.cursor()
             
@@ -898,44 +903,66 @@ class DanceDatabase:
                 VALUES (?, ?, ?, ?)
             ''', (video_id, video_type, user_id, content))
             
+            print(f"[数据库] INSERT执行成功，影响行数: {cursor.rowcount}")
             conn.commit()
+            print(f"[数据库] 事务提交成功")
             conn.close()
             return True
         except Exception as e:
-            print(f"添加评论失败: {e}")
+            print(f"[数据库] 添加评论失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def get_comments(self, video_id: str, video_type: str = None) -> List[Dict]:
         """获取视频的评论列表"""
         try:
+            print(f"[数据库] 获取评论 - video_id: {video_id}, video_type: {video_type}")
             conn = self.get_connection()
             cursor = conn.cursor()
             
             if video_type:
                 cursor.execute('''
-                    SELECT c.*, u.username
+                    SELECT c.id, c.video_id, c.video_type, c.user_id, c.content, c.created_at, u.username
                     FROM comments c
-                    JOIN users u ON c.user_id = u.id
+                    LEFT JOIN users u ON c.user_id = u.id
                     WHERE c.video_id = ? AND c.video_type = ?
                     ORDER BY c.created_at DESC
                 ''', (video_id, video_type))
             else:
                 cursor.execute('''
-                    SELECT c.*, u.username
+                    SELECT c.id, c.video_id, c.video_type, c.user_id, c.content, c.created_at, u.username
                     FROM comments c
-                    JOIN users u ON c.user_id = u.id
+                    LEFT JOIN users u ON c.user_id = u.id
                     WHERE c.video_id = ?
                     ORDER BY c.created_at DESC
                 ''', (video_id,))
             
+            rows = cursor.fetchall()
             comments = []
-            for row in cursor.fetchall():
-                comments.append(dict(row))
+            for row in rows:
+                # sqlite3.Row对象转换为字典
+                comment_dict = {
+                    'id': row['id'],
+                    'video_id': row['video_id'],
+                    'video_type': row['video_type'],
+                    'user_id': row['user_id'],
+                    'content': row['content'],
+                    'created_at': row['created_at'],
+                    'username': row['username'] or '未知用户'  # 如果用户不存在，使用默认值
+                }
+                comments.append(comment_dict)
+            
+            print(f"[数据库] 查询到 {len(comments)} 条评论")
+            if comments:
+                print(f"[数据库] 第一条评论示例: {comments[0]}")
             
             conn.close()
             return comments
         except Exception as e:
-            print(f"获取评论列表失败: {e}")
+            print(f"[数据库] 获取评论列表失败: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def toggle_like(self, video_id: str, video_type: str, user_id: int) -> Tuple[bool, bool]:

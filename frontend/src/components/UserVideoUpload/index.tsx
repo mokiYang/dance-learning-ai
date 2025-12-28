@@ -2,6 +2,7 @@ import React, { useState, forwardRef, useImperativeHandle } from "react";
 import { apiService } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { showToast } from "../Toast/ToastContainer";
+import UploadFormModal from "../UploadFormModal";
 import "./index.less";
 
 interface UserVideoUploadProps {
@@ -142,61 +143,51 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
       />
 
       {/* 上传表单弹窗 */}
-      {showForm && (
-        <div className="upload-form">
-          <div className="form-header">
-            <h3>投稿</h3>
-            <button className="close-button" onClick={handleCancel}>
-              ×
-            </button>
-          </div>
-
-          <div className="form-content">
-            <div className="file-info">
-              <span className="file-name">📹 {selectedFile?.name}</span>
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="title">视频标题 *</label>
-              <input
-                id="title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="请输入视频标题"
-                required
-              />
-            </div>
-            
-            <div className="form-actions">
-              <button
-                className="cancel-button"
-                onClick={handleCancel}
-                disabled={uploading}
-              >
-                取消
-              </button>
-              <button
-                className="submit-button"
-                onClick={handleUpload}
-                disabled={uploading || !title.trim()}
-              >
-                {uploading ? (
-                  <>
-                    <span className="upload-icon">⏳</span>
-                    上传中...
-                  </>
-                ) : (
-                  <>
-                    <span className="upload-icon">📤</span>
-                    确认上传
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+      <UploadFormModal
+        visible={showForm}
+        title="投稿"
+        fileName={selectedFile?.name}
+        onClose={handleCancel}
+      >
+        <div className="form-group">
+          <label htmlFor="title">视频标题 *</label>
+          <input
+            id="title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="请输入视频标题"
+            required
+          />
         </div>
-      )}
+        
+        <div className="form-actions">
+          <button
+            className="cancel-button"
+            onClick={handleCancel}
+            disabled={uploading}
+          >
+            取消
+          </button>
+          <button
+            className="submit-button"
+            onClick={handleUpload}
+            disabled={uploading || !title.trim()}
+          >
+            {uploading ? (
+              <>
+                <span className="upload-icon">⏳</span>
+                上传中...
+              </>
+            ) : (
+              <>
+                <span className="upload-icon">📤</span>
+                确认上传
+              </>
+            )}
+          </button>
+        </div>
+      </UploadFormModal>
     </div>
   );
 });
