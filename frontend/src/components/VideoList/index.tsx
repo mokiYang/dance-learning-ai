@@ -170,6 +170,16 @@ const VideoList: React.FC = () => {
       startPollingTask(taskId, videoId);
     }
   };
+
+  // 管理员删除视频后刷新列表
+  const handleVideoDeleted = () => {
+    showToast('视频已删除', 'success');
+    if (activeTab === 'reference') {
+      fetchVideos(true);
+    } else {
+      fetchUserVideos();
+    }
+  };
   
   // 开始轮询任务状态
   const startPollingTask = async (taskId: string, videoId: string) => {
@@ -286,6 +296,7 @@ const VideoList: React.FC = () => {
                   onClick={() => handleVideoClick(video.video_id, false)}
                   isProcessing={isProcessing}
                   processingProgress={taskInfo?.progress || 0}
+                  onDeleted={handleVideoDeleted}
                 />
               );
             })
@@ -305,6 +316,7 @@ const VideoList: React.FC = () => {
                   title={video.title || video.filename}
                   author={video.author}
                   onClick={() => handleVideoClick(video.video_id, true)}
+                  onDeleted={handleVideoDeleted}
                 />
               );
             })

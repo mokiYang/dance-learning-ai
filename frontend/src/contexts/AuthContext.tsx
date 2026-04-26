@@ -9,6 +9,7 @@ export interface User {
   avatar_url?: string;
   created_at?: string;
   last_login?: string;
+  role?: 'user' | 'admin';
 }
 
 // 认证上下文类型
@@ -16,6 +17,7 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (username: string, password: string, email?: string) => Promise<{ success: boolean; error?: string }>;
@@ -115,6 +117,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user,
     token,
     isAuthenticated: !!user && !!token,
+    isAdmin: !!user && user.role === 'admin',
     isLoading,
     login,
     register,

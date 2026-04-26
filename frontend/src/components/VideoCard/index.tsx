@@ -15,6 +15,7 @@ export interface VideoCardProps {
   className?: string;
   initialLikeCount?: number;
   initialIsLiked?: boolean;
+  onDeleted?: () => void;
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
@@ -29,11 +30,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
   className = '',
   initialLikeCount = 0,
   initialIsLiked = false,
+  onDeleted,
 }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [isLiked, setIsLiked] = useState(initialIsLiked);
   const [isLiking, setIsLiking] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const thumbnailUrl = thumbnailPath ? getThumbnailUrl(videoId) : undefined;
   const videoUrl = getVideoUrl(videoId, videoType);
@@ -56,15 +60,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
   // 处理点赞点击
   const handleLikeClick = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // 阻止事件冒泡，避免触发卡片点击
-    e.preventDefault(); // 阻止默认行为，避免按钮获得焦点时卡片变蓝
+    e.stopPropagation();
+    e.preventDefault();
 
     if (!isAuthenticated) {
-      // 可以显示提示，需要登录才能点赞
       return;
     }
 
-    if (isLiking) return; // 防止重复点击
+    if (isLiking) return;
 
     setIsLiking(true);
     try {
@@ -78,6 +81,40 @@ const VideoCard: React.FC<VideoCardProps> = ({
     } finally {
       setIsLiking(false);
     }
+  };
+
+  // 管理员删除视频
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    setIsDeleting(true);
+    try {
+      const result = await apiService.adminDeleteVideo(videoId, videoType);
+      if (result.success) {
+        onDeleted?.();
+      } else {
+        alert(result.error || '删除失败');
+      }
+    } catch (error) {
+      console.error('删除视频失败:', error);
+      alert('删除视频失败，请稍后重试');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -109,6 +146,41 @@ const VideoCard: React.FC<VideoCardProps> = ({
               正在提取骨骼数据...
               <br />
               <span className="processing-progress">{processingProgress}%</span>
+            </div>
+          </div>
+        )}
+        {/* 管理员删除按钮 */}
+        {isAdmin && !isProcessing && (
+          <button
+            className="admin-delete-btn"
+            onClick={handleDeleteClick}
+            title="管理员删除视频"
+          >
+            ✕
+          </button>
+        )}
+        {/* 删除确认弹窗 */}
+        {showDeleteConfirm && (
+          <div className="delete-confirm-overlay" onClick={handleCancelDelete}>
+            <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+              <p>确定要删除这个视频吗？</p>
+              <p className="delete-confirm-hint">此操作不可恢复</p>
+              <div className="delete-confirm-actions">
+                <button
+                  className="delete-confirm-cancel"
+                  onClick={handleCancelDelete}
+                  disabled={isDeleting}
+                >
+                  取消
+                </button>
+                <button
+                  className="delete-confirm-ok"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? '删除中...' : '确定删除'}
+                </button>
+              </div>
             </div>
           </div>
         )}

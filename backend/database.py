@@ -11,8 +11,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 class DanceDatabase:
-    def __init__(self, db_path: str = "dance_learning.db"):
+    def __init__(self, db_path: str = None):
         """初始化数据库连接"""
+        if db_path is None:
+            # Docker 环境使用 /app/data/ 持久化目录，本地开发使用当前目录
+            data_dir = '/app/data' if os.path.exists('/app/data') else '.'
+            db_path = os.path.join(data_dir, 'dance_learning.db')
         self.db_path = db_path
         self.init_database()
     
@@ -77,6 +81,13 @@ class DanceDatabase:
                 thumbnail_path TEXT
             )
         ''')
+        
+        # 为已存在的users表添加role字段（如果不存在）
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+            print("已添加 role 字段到 users 表")
+        except sqlite3.OperationalError:
+            pass
         
         # 为已存在的表添加新字段（如果不存在）
         try:
@@ -621,6 +632,10 @@ class DanceDatabase:
             # 删除姿势数据
             cursor.execute('DELETE FROM pose_data WHERE video_id = ?', (video_id,))
             
+            # 删除评论和点赞
+            cursor.execute('DELETE FROM comments WHERE video_id = ?', (video_id,))
+            cursor.execute('DELETE FROM likes WHERE video_id = ?', (video_id,))
+            
             # 删除比较记录
             if video_type == 'reference':
                 cursor.execute('DELETE FROM comparison_records WHERE reference_video_id = ?', (video_id,))
@@ -634,6 +649,21 @@ class DanceDatabase:
             return True
         except Exception as e:
             print(f"删除视频失败: {e}")
+            return False
+    
+    def update_user_role(self, user_id: int, role: str) -> bool:
+        """更新用户角色"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('UPDATE users SET role = ? WHERE id = ?', (role, user_id))
+            
+            conn.commit()
+            conn.close()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"更新用户角色失败: {e}")
             return False
     
     def get_database_stats(self) -> Dict:

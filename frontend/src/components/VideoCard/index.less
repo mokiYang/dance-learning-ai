@@ -45,6 +45,116 @@
   display: block;
 }
 
+// 管理员删除按钮
+.admin-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 59, 48, 0.85);
+  color: white;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  line-height: 1;
+  padding: 0;
+  
+  &:hover {
+    background: rgba(255, 59, 48, 1);
+    transform: scale(1.1);
+  }
+}
+
+.video-card:hover .admin-delete-btn {
+  opacity: 1;
+}
+
+// 删除确认弹窗
+.delete-confirm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  border-radius: 12px 12px 0 0;
+}
+
+.delete-confirm-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  max-width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  
+  p {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+  }
+  
+  .delete-confirm-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: #999;
+    margin-bottom: 16px;
+  }
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  
+  button {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+  
+  .delete-confirm-cancel {
+    background: #f0f0f0;
+    color: #666;
+    
+    &:hover:not(:disabled) {
+      background: #e0e0e0;
+    }
+  }
+  
+  .delete-confirm-ok {
+    background: #ff3b30;
+    color: white;
+    
+    &:hover:not(:disabled) {
+      background: #e0352b;
+    }
+  }
+}
+
 // 处理中的遮罩层
 .processing-overlay {
   position: absolute;

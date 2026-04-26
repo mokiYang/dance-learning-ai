@@ -159,6 +159,23 @@ tmp/
 # 上传文件
 uploads/
 
+# SQLite 数据库（本地开发产生的数据）
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# 缩略图（后端运行时生成）
+backend/thumbnails/
+backend/video_storage/
+backend/videos/
+backend/data/
+
+# 生成的骨骼视频等临时资源
+backend/temp/
+backend/uploads/
+
 # 媒体文件（可选，取决于您的需求）
 # *.mp4
 # *.avi

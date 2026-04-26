@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
 import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
 import CommentModal from '../CommentModal';
+import PoseCanvas from '../PoseCanvas';
 import './index.less';
 
 const VideoPlayer: React.FC = () => {
@@ -37,6 +38,9 @@ const VideoPlayer: React.FC = () => {
   // 评论相关状态
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
+
+  // 骨骼叠加层显隐
+  const [showPose, setShowPose] = useState(true);
 
   const videoRecorder = useRef<VideoRecorder>(new VideoRecorder());
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -462,7 +466,17 @@ const VideoPlayer: React.FC = () => {
 
   // 构建右侧按钮配置
   const rightButtons: ControlButton[] = [];
-  
+
+  // 骨骼显隐按钮（录制期间不显示，避免影响跟学体验）
+  if (!isRecording && !hasStartedCountdown && !isCameraActive) {
+    rightButtons.push({
+      label: showPose ? '隐藏骨骼' : '显示骨骼',
+      className: 'btn-pose-toggle',
+      onClick: () => setShowPose(v => !v),
+      visible: true,
+    });
+  }
+
   // 评论按钮（点击开始录制后隐藏，包括倒计时期间）
   rightButtons.push({
     label: (
@@ -591,6 +605,15 @@ const VideoPlayer: React.FC = () => {
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
       />
+      {/* 骨骼叠加层：跟学录制期间隐藏，避免覆盖摄像头布局 */}
+      {video?.video_id && !isRecording && !hasStartedCountdown && !isCameraActive && (
+        <PoseCanvas
+          videoRef={videoRef}
+          videoId={video.video_id}
+          fps={video.fps || 30}
+          enabled={showPose}
+        />
+      )}
     </div>
   );
 

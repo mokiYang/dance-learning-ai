@@ -46,11 +46,12 @@ def allowed_file(filename):
 
 # ========== 认证相关函数 ==========
 
-def generate_auth_token(user_id: int, username: str) -> str:
+def generate_auth_token(user_id: int, username: str, role: str = 'user') -> str:
     """生成认证Token（365天有效期）"""
     payload = {
         'user_id': user_id,
         'username': username,
+        'role': role,
         'exp': datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS),
         'iat': datetime.utcnow()
     }
@@ -63,7 +64,8 @@ def verify_auth_token(token: str) -> dict:
         return {
             'valid': True,
             'user_id': payload['user_id'],
-            'username': payload['username']
+            'username': payload['username'],
+            'role': payload.get('role', 'user')
         }
     except jwt.ExpiredSignatureError:
         return {'valid': False, 'error': 'Token已过期'}
@@ -95,11 +97,32 @@ def require_auth(f):
         # 将用户信息附加到请求上下文
         request.current_user = {
             'user_id': result['user_id'],
-            'username': result['username']
+            'username': result['username'],
+            'role': result.get('role', 'user')
         }
         
         if f.__name__ == 'add_comment':
             print(f"[认证装饰器] 认证成功，用户ID: {result['user_id']}, 用户名: {result['username']}")
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
+def require_admin(f):
+    """管理员权限装饰器 - 保护需要管理员权限的接口"""
+    @wraps(f)
+    @require_auth
+    def decorated_function(*args, **kwargs):
+        # 先从token中获取role
+        role = request.current_user.get('role', 'user')
+        
+        # 再从数据库确认（防止token中的role过期）
+        user = db.get_user_by_id(request.current_user['user_id'])
+        if user:
+            role = user.get('role', 'user') or 'user'
+        
+        if role != 'admin':
+            return jsonify({'success': False, 'error': '需要管理员权限'}), 403
         
         return f(*args, **kwargs)
     
@@ -541,27 +564,9 @@ def async_extract_poses_and_generate_video(task_id, video_id, original_filepath,
         db.update_task_status(task_id, 'processing', progress=65)
         print(f"[任务 {task_id}] 骨骼数据已保存到数据库")
         
-        # 只为参考视频生成标记骨骼视频
-        if video_type == 'reference':
-            print(f"[任务 {task_id}] 正在生成标记骨骼视频...")
-            db.update_task_status(task_id, 'processing', progress=70)
-            
-            output_dir = os.path.join(TEMP_FOLDER, f"ref_{video_id}")
-            os.makedirs(output_dir, exist_ok=True)
-            pose_video_path = os.path.join(output_dir, "pose_video.mp4")
-            
-            # 生成标记骨骼视频（使用转换后的临时视频，如果转换失败则使用原始视频）
-            generate_pose_video(converted_video_path, pose_video_path, n=5)
-            
-            db.update_task_status(task_id, 'processing', progress=90)
-            
-            # 更新标记骨骼视频路径
-            db.update_pose_video_path(video_id, pose_video_path)
-            print(f"[任务 {task_id}] 标记骨骼视频生成完成")
-        else:
-            # 用户视频不生成标记骨骼视频，直接跳到90%
-            db.update_task_status(task_id, 'processing', progress=90)
-        
+        # 前端用 Canvas 实时绘制骨骼，不再生成带绿线的骨骼标注视频（节省 10-20 秒 + 磁盘空间）
+        db.update_task_status(task_id, 'processing', progress=90)
+
         # 任务完成
         db.update_task_status(task_id, 'completed', progress=100)
         print(f"[任务 {task_id}] 处理完成")
@@ -684,7 +689,64 @@ def get_video_fps(video_file):
     finally:
         cap.release()
 
-def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
+def _pose_worker(args):
+    """多进程并行提取骨骼数据的 worker（处理一段视频）"""
+    video_file, start_frame, end_frame, n, max_side, selected_landmarks_list = args
+    import cv2 as _cv2
+    import mediapipe as _mp
+
+    selected_set = set(selected_landmarks_list)
+    cap = _cv2.VideoCapture(video_file)
+    if not cap.isOpened():
+        return {}
+
+    src_width = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+    src_height = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+    scale = min(1.0, max_side / max(src_width, src_height)) if max(src_width, src_height) > 0 else 1.0
+    target_size = (int(src_width * scale), int(src_height * scale)) if scale < 1.0 else None
+
+    # 跳到起始帧（grab 不解码，更快）
+    for _ in range(start_frame):
+        if not cap.grab():
+            cap.release()
+            return {}
+
+    poses_data = {}
+    frame_idx = start_frame
+    mp_pose = _mp.solutions.pose
+    with mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=0,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    ) as pose:
+        while frame_idx < end_frame:
+            if frame_idx % n == 0:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if target_size is not None:
+                    frame = _cv2.resize(frame, target_size, interpolation=_cv2.INTER_LINEAR)
+                image_rgb = _cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB)
+                image_rgb.flags.writeable = False
+                results = pose.process(image_rgb)
+                if results.pose_landmarks:
+                    poses_data[frame_idx] = [
+                        [lm.x, lm.y, lm.z, lm.visibility]
+                        for i, lm in enumerate(results.pose_landmarks.landmark)
+                        if i in selected_set
+                    ]
+                else:
+                    poses_data[frame_idx] = None
+            else:
+                if not cap.grab():
+                    break
+            frame_idx += 1
+    cap.release()
+    return poses_data
+
+
+def extract_poses_from_video(video_file, n=5, early_stop_threshold=50, num_workers=None):
     """
     从视频中提取姿势数据并返回字典（等距提取，包含无骨骼数据的帧）
     
@@ -692,6 +754,7 @@ def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
         video_file: 视频文件路径
         n: 每隔n帧提取一次
         early_stop_threshold: 如果连续N帧都没有检测到人像，提前终止（0表示不提前终止）
+        num_workers: 并行进程数；None=自动（min(4, CPU核数)），1=单进程（关闭并行）
     
     Returns:
         dict: 帧索引到骨骼数据的映射，无骨骼时存储None
@@ -713,48 +776,126 @@ def extract_poses_from_video(video_file, n=5, early_stop_threshold=50):
         28  # 右脚踝 - 脚部位置
     ]
 
+    # 先获取视频帧数决定并行策略
+    cap_info = cv2.VideoCapture(video_file)
+    total_frames = int(cap_info.get(cv2.CAP_PROP_FRAME_COUNT))
+    src_width = int(cap_info.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_height = int(cap_info.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap_info.release()
+
+    MAX_SIDE = 480
+
+    # 自动决定并行数：短视频/未知帧数 用单进程；长视频按 CPU 核数并行
+    if num_workers is None:
+        cpu_count = os.cpu_count() or 2
+        if total_frames <= 0 or total_frames < 300:  # 少于 300 帧（约 10 秒）走单进程
+            num_workers = 1
+        else:
+            num_workers = min(4, max(1, cpu_count - 1))
+
+    print(f"[提取骨骼] 总帧数={total_frames}, 原始分辨率={src_width}x{src_height}, 步长={n}, 并行进程={num_workers}")
+
+    # 单进程：保留 early_stop 能力（多进程切段后无意义，因此并行模式不再启用早停）
+    if num_workers <= 1 or total_frames <= 0:
+        return _extract_poses_single_process(
+            video_file, n, early_stop_threshold, selected_landmarks, MAX_SIDE
+        )
+
+    # 多进程：把视频按帧数等分给若干 worker
+    # 使用 spawn 启动方式（兼容 macOS / Linux），避免 mediapipe fork 问题
+    import multiprocessing as mp_proc
+    try:
+        ctx = mp_proc.get_context('spawn')
+    except Exception:
+        ctx = mp_proc
+
+    chunk_size = (total_frames + num_workers - 1) // num_workers
+    tasks = []
+    for i in range(num_workers):
+        start = i * chunk_size
+        end = min(total_frames, (i + 1) * chunk_size)
+        if start >= end:
+            continue
+        tasks.append((video_file, start, end, n, MAX_SIDE, selected_landmarks))
+
+    poses_data = {}
+    try:
+        with ctx.Pool(processes=len(tasks)) as pool:
+            for partial in pool.imap_unordered(_pose_worker, tasks):
+                poses_data.update(partial)
+    except Exception as e:
+        print(f"[提取骨骼] 并行执行失败，回退到单进程: {e}")
+        return _extract_poses_single_process(
+            video_file, n, early_stop_threshold, selected_landmarks, MAX_SIDE
+        )
+
+    valid_poses = sum(1 for p in poses_data.values() if p is not None)
+    print(f"[提取骨骼] 共处理 {len(poses_data)} 帧，有效骨骼数据 {valid_poses} 帧（并行）")
+    return poses_data
+
+
+def _extract_poses_single_process(video_file, n, early_stop_threshold, selected_landmarks, max_side):
+    """单进程版骨骼提取（支持早停，作为短视频/回退方案）"""
+    selected_landmarks_set = set(selected_landmarks)
     mp_pose = mp.solutions.pose
     cap = cv2.VideoCapture(video_file)
-    frame_idx = 0
-    poses_data = {}
-    consecutive_no_pose = 0  # 连续未检测到人像的帧数
+    src_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    scale = min(1.0, max_side / max(src_width, src_height)) if max(src_width, src_height) > 0 else 1.0
+    target_size = (int(src_width * scale), int(src_height * scale)) if scale < 1.0 else None
 
-    with mp_pose.Pose(static_image_mode=False) as pose:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+    poses_data = {}
+    consecutive_no_pose = 0
+    frame_idx = 0
+
+    with mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=0,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+    ) as pose:
+        while True:
             if frame_idx % n == 0:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if target_size is not None:
+                    frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_LINEAR)
                 image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image_rgb.flags.writeable = False
                 results = pose.process(image_rgb)
                 if results.pose_landmarks:
-                    # 提取选定的骨骼点坐标
-                    pose_data = []
-                    for i, lm in enumerate(results.pose_landmarks.landmark):
-                        if i in selected_landmarks:
-                            pose_data.append([lm.x, lm.y, lm.z, lm.visibility])
-                    poses_data[frame_idx] = pose_data
-                    consecutive_no_pose = 0  # 重置计数器
+                    poses_data[frame_idx] = [
+                        [lm.x, lm.y, lm.z, lm.visibility]
+                        for i, lm in enumerate(results.pose_landmarks.landmark)
+                        if i in selected_landmarks_set
+                    ]
+                    consecutive_no_pose = 0
                 else:
-                    # 没有检测到骨骼数据，存储None作为标记
                     poses_data[frame_idx] = None
                     consecutive_no_pose += 1
-                    
-                    # 提前终止检查：如果连续多帧没有检测到人像
                     if early_stop_threshold > 0 and consecutive_no_pose >= early_stop_threshold:
                         print(f"[提取骨骼] 连续 {consecutive_no_pose} 帧未检测到人像，提前终止提取")
                         break
+            else:
+                if not cap.grab():
+                    break
             frame_idx += 1
     cap.release()
-    
-    # 打印提取统计信息
-    valid_poses = sum(1 for pose in poses_data.values() if pose is not None)
-    print(f"[提取骨骼] 共处理 {len(poses_data)} 帧，有效骨骼数据 {valid_poses} 帧")
-    
+    valid_poses = sum(1 for p in poses_data.values() if p is not None)
+    print(f"[提取骨骼] 共处理 {len(poses_data)} 帧，有效骨骼数据 {valid_poses} 帧（单进程）")
     return poses_data
 
-def generate_pose_video(video_file, output_file, n=5):
-    """生成标记骨骼的视频（带音频）"""
+def generate_pose_video(video_file, output_file, n=5, poses_data=None):
+    """生成标记骨骼的视频（带音频）
+
+    Args:
+        video_file: 输入视频
+        output_file: 输出视频路径
+        n: 每隔 n 帧绘制一次骨骼
+        poses_data: 可选，已经提取好的 {frame_idx: [[x,y,z,vis], ...]} 数据，
+                    传入后会跳过 MediaPipe 推理直接绘制，速度大幅提升
+    """
     import subprocess
     
     # 使用相同的13个关键点
@@ -911,48 +1052,117 @@ def generate_pose_video(video_file, output_file, n=5):
             raise Exception(f"无法生成视频文件: {str(e)}")
     
     frame_idx = 0
-    
-    with mp_pose.Pose(static_image_mode=False) as pose:
+
+    # 性能优化：MediaPipe 推理时缩小图像（最长边 480px），骨骼绘制仍用原图
+    MAX_INFER_SIDE = 480
+    infer_scale = min(1.0, MAX_INFER_SIDE / max(width, height)) if max(width, height) > 0 else 1.0
+    infer_size = (int(width * infer_scale), int(height * infer_scale)) if infer_scale < 1.0 else None
+
+    selected_landmarks_set = set(selected_landmarks)
+    use_cached = poses_data is not None and len(poses_data) > 0
+    if use_cached:
+        print(f"[生成骨骼视频] 复用已有姿势数据 {len(poses_data)} 帧，跳过 MediaPipe 推理")
+    else:
+        print(f"[生成骨骼视频] 推理缩放: {infer_scale:.2f}, 推理尺寸: {infer_size}")
+
+    def _draw_from_cached_pose(frame_bgr, pose_kpts):
+        """根据缓存的关键点（13 个 [x,y,z,vis] 归一化坐标）在 BGR 帧上绘制骨骼"""
+        if not pose_kpts:
+            return
+        h, w = frame_bgr.shape[:2]
+        # 13 个关键点对应 selected_landmarks 顺序
+        # 简化的骨架连接（基于 13 个点的索引：0=鼻 1=左肩 2=右肩 3=左肘 4=右肘 5=左腕 6=右腕
+        # 7=左髋 8=右髋 9=左膝 10=右膝 11=左踝 12=右踝）
+        connections = [
+            (0, 1), (0, 2), (1, 2),       # 头-肩
+            (1, 3), (3, 5),               # 左臂
+            (2, 4), (4, 6),               # 右臂
+            (1, 7), (2, 8), (7, 8),       # 躯干
+            (7, 9), (9, 11),              # 左腿
+            (8, 10), (10, 12),            # 右腿
+        ]
+        pts = []
+        for kp in pose_kpts:
+            x, y = kp[0], kp[1]
+            vis = kp[3] if len(kp) > 3 else 1.0
+            if vis < 0.3:
+                pts.append(None)
+            else:
+                pts.append((int(x * w), int(y * h)))
+        # 画连线
+        for a, b in connections:
+            if a < len(pts) and b < len(pts) and pts[a] is not None and pts[b] is not None:
+                cv2.line(frame_bgr, pts[a], pts[b], (0, 255, 0), 2)
+        # 画关键点
+        for p in pts:
+            if p is not None:
+                cv2.circle(frame_bgr, p, 3, (0, 255, 0), -1)
+
+    if use_cached:
+        # 不需要 MediaPipe，直接读帧 + 用缓存数据绘制
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            # 只在指定间隔的帧上绘制骨骼
-            if frame_idx % n == 0:
-                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = pose.process(image_rgb)
-                
-                if results.pose_landmarks:
-                    # 创建只包含选定关键点的landmarks对象
-                    filtered_landmarks = []
-                    for i, landmark in enumerate(results.pose_landmarks.landmark):
-                        if i in selected_landmarks:
-                            filtered_landmarks.append(landmark)
-                        else:
-                            # 对于不在选定列表中的点，创建不可见的点
-                            invisible_landmark = type(landmark)()
-                            invisible_landmark.x = 0
-                            invisible_landmark.y = 0
-                            invisible_landmark.z = 0
-                            invisible_landmark.visibility = 0
-                            filtered_landmarks.append(invisible_landmark)
-                    
-                    # 创建新的pose_landmarks对象
-                    filtered_pose_landmarks = type(results.pose_landmarks)()
-                    filtered_pose_landmarks.landmark.extend(filtered_landmarks)
-                    
-                    # 绘制骨骼连线（只显示选定关键点之间的连接）
-                    mp_drawing.draw_landmarks(
-                        frame, 
-                        filtered_pose_landmarks, 
-                        mp_pose.POSE_CONNECTIONS,
-                        landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
-                        connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2)
-                    )
-            
+            if frame_idx % n == 0 and frame_idx in poses_data:
+                _draw_from_cached_pose(frame, poses_data[frame_idx])
             out.write(frame)
             frame_idx += 1
+    else:
+        # 优化：model_complexity=0 提速 2-3 倍，对舞蹈分析精度影响很小
+        with mp_pose.Pose(
+            static_image_mode=False,
+            model_complexity=0,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        ) as pose:
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                # 只在指定间隔的帧上绘制骨骼
+                if frame_idx % n == 0:
+                    # 推理用缩小图，更快
+                    if infer_size is not None:
+                        frame_for_infer = cv2.resize(frame, infer_size, interpolation=cv2.INTER_LINEAR)
+                    else:
+                        frame_for_infer = frame
+
+                    image_rgb = cv2.cvtColor(frame_for_infer, cv2.COLOR_BGR2RGB)
+                    image_rgb.flags.writeable = False
+                    results = pose.process(image_rgb)
+
+                    if results.pose_landmarks:
+                        # 创建只包含选定关键点的landmarks对象
+                        filtered_landmarks = []
+                        for i, landmark in enumerate(results.pose_landmarks.landmark):
+                            if i in selected_landmarks_set:
+                                filtered_landmarks.append(landmark)
+                            else:
+                                # 对于不在选定列表中的点，创建不可见的点
+                                invisible_landmark = type(landmark)()
+                                invisible_landmark.x = 0
+                                invisible_landmark.y = 0
+                                invisible_landmark.z = 0
+                                invisible_landmark.visibility = 0
+                                filtered_landmarks.append(invisible_landmark)
+
+                        # 创建新的pose_landmarks对象
+                        filtered_pose_landmarks = type(results.pose_landmarks)()
+                        filtered_pose_landmarks.landmark.extend(filtered_landmarks)
+
+                        # MediaPipe 用归一化坐标 (0~1)，所以推理用缩小图不影响在原图上绘制位置
+                        mp_drawing.draw_landmarks(
+                            frame,
+                            filtered_pose_landmarks,
+                            mp_pose.POSE_CONNECTIONS,
+                            landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+                            connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2)
+                        )
+
+                out.write(frame)
+                frame_idx += 1
     
     cap.release()
     out.release()
@@ -1276,7 +1486,7 @@ def register():
         user = db.get_user_by_username(username)
         
         # 生成Token
-        token = generate_auth_token(user['id'], user['username'])
+        token = generate_auth_token(user['id'], user['username'], user.get('role', 'user'))
         
         # 保存会话
         expires_at = (datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS)).isoformat()
@@ -1292,7 +1502,8 @@ def register():
                 'id': user['id'],
                 'username': user['username'],
                 'email': user.get('email', ''),
-                'created_at': user['created_at']
+                'created_at': user['created_at'],
+                'role': user.get('role', 'user') or 'user'
             },
             'message': '注册成功'
         })
@@ -1334,7 +1545,7 @@ def login():
             }), 401
         
         # 生成Token
-        token = generate_auth_token(user['id'], user['username'])
+        token = generate_auth_token(user['id'], user['username'], user.get('role', 'user'))
         
         # 保存会话
         expires_at = (datetime.utcnow() + timedelta(days=TOKEN_EXPIRY_DAYS)).isoformat()
@@ -1352,7 +1563,8 @@ def login():
                 'email': user.get('email', ''),
                 'avatar_url': user.get('avatar_url', ''),
                 'created_at': user['created_at'],
-                'last_login': user['last_login']
+                'last_login': user['last_login'],
+                'role': user.get('role', 'user') or 'user'
             },
             'message': '登录成功'
         })
@@ -1805,7 +2017,7 @@ def compare_uploaded_videos():
             print("生成参考视频标记骨骼视频...")
             if not os.path.exists(reference_video['file_path']):
                 raise Exception(f"参考视频文件不存在: {reference_video['file_path']}")
-            generate_pose_video(reference_video['file_path'], reference_pose_video, n=5)
+            generate_pose_video(reference_video['file_path'], reference_pose_video, n=5, poses_data=reference_poses)
             # 验证生成的文件
             if not os.path.exists(reference_pose_video):
                 raise Exception(f"生成的参考视频标记骨骼视频不存在: {reference_pose_video}")
@@ -1850,8 +2062,8 @@ def compare_uploaded_videos():
             else:
                 print(f"[生成用户骨骼视频] 使用原始视频文件")
             
-            # 生成视频（内部会验证）
-            generate_pose_video(video_for_pose, user_pose_video, n=5)
+            # 生成视频（内部会验证），复用已提取的用户姿势数据
+            generate_pose_video(video_for_pose, user_pose_video, n=5, poses_data=user_poses)
             
             # 删除临时转换文件（如果存在）
             if converted_user_video and converted_user_video != user_video['file_path'] and os.path.exists(converted_user_video):
@@ -2295,6 +2507,68 @@ def get_video_pose_data(video_id):
             'video_id': video_id,
             'pose_data': pose_data
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/videos/<video_id>', methods=['DELETE'])
+@require_admin
+def admin_delete_video(video_id):
+    """管理员删除视频（教学视频或用户视频）"""
+    try:
+        video_type = request.args.get('type', 'reference')  # 'reference' 或 'user'
+        
+        # 获取视频信息
+        video = db.get_video_by_id(video_id, video_type)
+        if not video:
+            return jsonify({
+                'success': False,
+                'error': f'视频 {video_id} 不存在'
+            }), 404
+        
+        # 删除数据库记录（包括评论、点赞、姿势数据等）
+        success = db.delete_video(video_id, video_type)
+        
+        if success:
+            # 删除文件系统中的文件
+            try:
+                file_path = video.get('file_path', '')
+                if file_path:
+                    # 删除视频文件
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"[管理员] 已删除视频文件: {file_path}")
+                    
+                    # 删除工作目录（如果存在）
+                    work_dir = os.path.dirname(file_path)
+                    if os.path.exists(work_dir) and work_dir != UPLOAD_FOLDER:
+                        shutil.rmtree(work_dir, ignore_errors=True)
+                        print(f"[管理员] 已删除视频工作目录: {work_dir}")
+                
+                # 删除缩略图
+                thumbnail_path = video.get('thumbnail_path', '')
+                if thumbnail_path and os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
+                    print(f"[管理员] 已删除缩略图: {thumbnail_path}")
+                    
+            except Exception as e:
+                print(f"[管理员] 删除文件时出错: {e}")
+            
+            admin_username = request.current_user['username']
+            print(f"[管理员] 用户 {admin_username} 删除了{('教学' if video_type == 'reference' else '用户')}视频: {video_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'视频 {video_id} 已被管理员删除'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '删除视频失败'
+            }), 500
+    
     except Exception as e:
         return jsonify({
             'success': False,
@@ -3425,11 +3699,13 @@ def get_frame_comparison(work_id):
             'work_id': work_id,
             'video_info': {
                 'reference': {
+                    'video_id': reference_video_id,
                     'filename': reference_video['filename'],
                     'duration': reference_video['duration'],
                     'fps': reference_video['fps']
                 },
                 'user': {
+                    'video_id': user_video_id,
                     'filename': user_video['filename'],
                     'duration': user_video['duration'],
                     'fps': user_video['fps']

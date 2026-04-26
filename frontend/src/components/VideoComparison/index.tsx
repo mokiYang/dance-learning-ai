@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { apiService, FrameComparisonResult, FrameComparison } from '../../services/api';
+import { apiService, FrameComparisonResult, getVideoUrl } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
 import UploadFormModal from '../UploadFormModal';
+import PoseCanvas from '../PoseCanvas';
 import './index.less';
 
 interface VideoComparisonProps {
@@ -29,22 +30,23 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [videoTitle, setVideoTitle] = useState('');
-  
-  // 缓存视频URL，避免每次渲染都重新计算
-  const referenceVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'reference'), [workId]);
-  const userVideoUrl = React.useMemo(() => apiService.getPoseVideoUrl(workId, 'user'), [workId]);
-  
-  // 缓存缩略图URL，用于poster
-  const referenceThumbnailUrl = React.useMemo(() => {
-    const url = apiService.getPoseVideoThumbnailUrl(workId, 'reference');
-    console.log('参考视频缩略图URL:', url);
-    return url;
-  }, [workId]);
-  const userThumbnailUrl = React.useMemo(() => {
-    const url = apiService.getPoseVideoThumbnailUrl(workId, 'user');
-    console.log('用户视频缩略图URL:', url);
-    return url;
-  }, [workId]);
+  // 骨骼叠加层显隐
+  const [showPose, setShowPose] = useState(true);
+
+  // 使用原始视频 URL（不再使用生成的骨骼视频，改用 Canvas 实时绘制）
+  const referenceVideoId = frameData?.video_info?.reference?.video_id;
+  const userVideoId = frameData?.video_info?.user?.video_id;
+  const referenceFps = frameData?.video_info?.reference?.fps || 30;
+  const userFps = frameData?.video_info?.user?.fps || 30;
+
+  const referenceVideoUrl = React.useMemo(
+    () => (referenceVideoId ? getVideoUrl(referenceVideoId, 'reference') : ''),
+    [referenceVideoId]
+  );
+  const userVideoUrl = React.useMemo(
+    () => (userVideoId ? getVideoUrl(userVideoId, 'user') : ''),
+    [userVideoId]
+  );
 
   // 获取逐帧对比数据
   useEffect(() => {
@@ -333,53 +335,61 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
               </button>
             </div>
           ) : (
-            <video
-              ref={referenceVideoRef}
-              src={referenceVideoUrl}
-              poster={referenceThumbnailUrl || undefined}
-              className="comparison-video"
-              controls={false}
-              muted
-              playsInline
-              preload="metadata"
-              crossOrigin="anonymous"
-              onLoadedData={() => {
-                if (!referenceVideoLoaded) {
-                  console.log('参考视频加载完成');
-                  setReferenceVideoError(null);
-                  setReferenceVideoLoaded(true);
-                }
-              }}
-              onError={(e) => {
-                const video = e.currentTarget;
-                let errorMsg = '未知错误';
-                
-                if (video.error) {
-                  const errorCode = video.error.code;
-                  const errorMessages: { [key: number]: string } = {
-                    1: '视频加载被中止',
-                    2: '网络错误导致视频加载失败',
-                    3: '视频解码失败',
-                    4: '视频格式不支持或视频源无效'
-                  };
-                  errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
-                  if (video.error.message) {
-                    errorMsg += `, 消息: ${video.error.message}`;
+            <div className="video-with-overlay">
+              <video
+                ref={referenceVideoRef}
+                src={referenceVideoUrl}
+                className="comparison-video"
+                controls={false}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={() => {
+                  if (!referenceVideoLoaded) {
+                    console.log('参考视频加载完成');
+                    setReferenceVideoError(null);
+                    setReferenceVideoLoaded(true);
                   }
-                }
-                
-                console.error('参考视频加载失败:', {
-                  error: e,
-                  videoError: video.error,
-                  src: video.src,
-                  networkState: video.networkState,
-                  readyState: video.readyState
-                });
-                
-                setReferenceVideoError(`参考视频加载失败: ${errorMsg}。`);
-                setError(`参考视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
-              }}
-            />
+                }}
+                onError={(e) => {
+                  const video = e.currentTarget;
+                  let errorMsg = '未知错误';
+                  
+                  if (video.error) {
+                    const errorCode = video.error.code;
+                    const errorMessages: { [key: number]: string } = {
+                      1: '视频加载被中止',
+                      2: '网络错误导致视频加载失败',
+                      3: '视频解码失败',
+                      4: '视频格式不支持或视频源无效'
+                    };
+                    errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                    if (video.error.message) {
+                      errorMsg += `, 消息: ${video.error.message}`;
+                    }
+                  }
+                  
+                  console.error('参考视频加载失败:', {
+                    error: e,
+                    videoError: video.error,
+                    src: video.src,
+                    networkState: video.networkState,
+                    readyState: video.readyState
+                  });
+                  
+                  setReferenceVideoError(`参考视频加载失败: ${errorMsg}。`);
+                  setError(`参考视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+                }}
+              />
+              {referenceVideoId && (
+                <PoseCanvas
+                  videoRef={referenceVideoRef}
+                  videoId={referenceVideoId}
+                  fps={referenceFps}
+                  enabled={showPose}
+                />
+              )}
+            </div>
           )}
         </div>
         
@@ -401,67 +411,75 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
               </button>
             </div>
           ) : (
-            <video
-              ref={userVideoRef}
-              src={userVideoUrl}
-              poster={userThumbnailUrl || undefined}
-              className="comparison-video"
-              controls={false}
-              muted
-              playsInline
-              preload="metadata"
-              crossOrigin="anonymous"
-              onLoadedData={() => {
-                if (!userVideoLoaded) {
-                  console.log('用户视频加载完成');
-                  setVideoLoading(false);
-                  setUserVideoLoaded(true);
-                  setUserVideoError(null);
-                  setRetryCount(0);
-                }
-              }}
-              onError={(e) => {
-                const video = e.currentTarget;
-                let errorMsg = '未知错误';
-                
-                if (video.error) {
-                  const errorCode = video.error.code;
-                  const errorMessages: { [key: number]: string } = {
-                    1: '视频加载被中止',
-                    2: '网络错误导致视频加载失败',
-                    3: '视频解码失败',
-                    4: '视频格式不支持或视频源无效'
-                  };
-                  errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
-                  if (video.error.message) {
-                    errorMsg += `, 消息: ${video.error.message}`;
+            <div className="video-with-overlay">
+              <video
+                ref={userVideoRef}
+                src={userVideoUrl}
+                className="comparison-video"
+                controls={false}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={() => {
+                  if (!userVideoLoaded) {
+                    console.log('用户视频加载完成');
+                    setVideoLoading(false);
+                    setUserVideoLoaded(true);
+                    setUserVideoError(null);
+                    setRetryCount(0);
                   }
-                }
-                
-                console.error('用户视频加载失败:', {
-                  error: e,
-                  videoError: video.error,
-                  src: video.src,
-                  networkState: video.networkState,
-                  readyState: video.readyState
-                });
-                
-                setUserVideoError(`用户视频加载失败: ${errorMsg}。`);
-                
-                // 如果是格式不支持错误，尝试重新加载（最多重试1次，避免过多请求）
-                if (video.error?.code === 4 && retryCount < 1 && !userVideoLoaded) {
-                  setTimeout(() => {
-                    console.log(`重试加载用户视频 (${retryCount + 1}/1)...`);
-                    setRetryCount(retryCount + 1);
-                    if (userVideoRef.current) {
-                      userVideoRef.current.load();
+                }}
+                onError={(e) => {
+                  const video = e.currentTarget;
+                  let errorMsg = '未知错误';
+                  
+                  if (video.error) {
+                    const errorCode = video.error.code;
+                    const errorMessages: { [key: number]: string } = {
+                      1: '视频加载被中止',
+                      2: '网络错误导致视频加载失败',
+                      3: '视频解码失败',
+                      4: '视频格式不支持或视频源无效'
+                    };
+                    errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                    if (video.error.message) {
+                      errorMsg += `, 消息: ${video.error.message}`;
                     }
-                  }, 3000);
-                } else {
-                  setError(`用户视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
-                }
-              }}
-            />
+                  }
+                  
+                  console.error('用户视频加载失败:', {
+                    error: e,
+                    videoError: video.error,
+                    src: video.src,
+                    networkState: video.networkState,
+                    readyState: video.readyState
+                  });
+                  
+                  setUserVideoError(`用户视频加载失败: ${errorMsg}。`);
+                  
+                  // 如果是格式不支持错误，尝试重新加载（最多重试1次，避免过多请求）
+                  if (video.error?.code === 4 && retryCount < 1 && !userVideoLoaded) {
+                    setTimeout(() => {
+                      console.log(`重试加载用户视频 (${retryCount + 1}/1)...`);
+                      setRetryCount(retryCount + 1);
+                      if (userVideoRef.current) {
+                        userVideoRef.current.load();
+                      }
+                    }, 3000);
+                  } else {
+                    setError(`用户视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+                  }
+                }}
+              />
+              {userVideoId && (
+                <PoseCanvas
+                  videoRef={userVideoRef}
+                  videoId={userVideoId}
+                  fps={userFps}
+                  enabled={showPose}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -470,6 +488,13 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
         <div className="playback-controls">
           <button onClick={togglePlay} className="play-btn">
             {isPlaying ? '暂停' : '播放'}
+          </button>
+
+          <button
+            onClick={() => setShowPose(v => !v)}
+            className={`pose-toggle-btn ${showPose ? 'active' : ''}`}
+          >
+            {showPose ? '隐藏骨骼' : '显示骨骼'}
           </button>
           
           <div className="speed-controls">

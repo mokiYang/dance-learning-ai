@@ -66,6 +66,7 @@ const getAuthToken = (): string | null => {
 
 // 接口类型定义
 export interface VideoInfo {
+  video_id?: string;
   filename: string;
   duration: number;
   fps: number;
@@ -257,6 +258,14 @@ class ApiService {
   // 获取用户视频列表
   async getUserVideos(): Promise<{ success: boolean; videos: any[] }> {
     return this.makeRequest(`${this.baseUrl}/user-videos`);
+  }
+
+  async getPoseData(videoId: string): Promise<{
+    success: boolean;
+    video_id: string;
+    pose_data: Array<{ frame_index: number; pose_data: number[][] | null; timestamp: number }>;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/videos/${videoId}/pose-data`);
   }
 
   // 上传用户视频并提取骨骼数据
@@ -566,6 +575,18 @@ class ApiService {
     videoType: 'reference' | 'user' = 'user'
   ): Promise<{ success: boolean; like_count?: number; is_liked?: boolean; error?: string }> {
     return this.makeRequest(`${this.baseUrl}/likes/${videoId}?video_type=${videoType}`);
+  }
+
+  // ==================== 管理员相关 API ====================
+
+  // 管理员删除视频
+  async adminDeleteVideo(
+    videoId: string,
+    videoType: 'reference' | 'user'
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    return this.makeRequest(`${this.baseUrl}/admin/videos/${videoId}?type=${videoType}`, {
+      method: 'DELETE',
+    });
   }
 }
 
