@@ -7,13 +7,16 @@ import VideoCard from '../VideoCard';
 import Tabs from '../Tabs';
 import './index.less';
 
+type MainTab = 'user' | 'reference';
+
 const Profile: React.FC = () => {
   const { user, isAuthenticated, logout, isLoading } = useAuth();
   const navigate = useNavigate();
+  // 用户视频：公开 + 私密混排在同一个网格中，私密视频通过 VideoCard 的徽标区分
   const [userVideos, setUserVideos] = useState<any[]>([]);
   const [referenceVideos, setReferenceVideos] = useState<any[]>([]);
   const [videosLoading, setVideosLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'user' | 'reference'>('user');
+  const [activeTab, setActiveTab] = useState<MainTab>('user');
 
   // 获取用户发布的视频 - Hooks必须在所有条件返回之前
   useEffect(() => {
@@ -21,17 +24,17 @@ const Profile: React.FC = () => {
       const fetchVideos = async () => {
         try {
           setVideosLoading(true);
-          
-          // 并行获取用户视频和教学视频
+
+          // 并行：当前用户的全部用户视频（含 public + private）+ 教学视频
           const [userVideosResponse, referenceVideosResponse] = await Promise.all([
             apiService.getUserVideos(),
-            apiService.getReferenceVideos()
+            apiService.getReferenceVideos(),
           ]);
-          
+
           if (userVideosResponse.success) {
             setUserVideos(userVideosResponse.videos || []);
           }
-          
+
           if (referenceVideosResponse.success) {
             // 只显示当前用户上传的教学视频（通过author字段匹配）
             const myReferenceVideos = referenceVideosResponse.videos?.filter(
@@ -69,7 +72,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleTabChange = (tab: 'user' | 'reference') => {
+  const handleTabChange = (tab: MainTab) => {
     setActiveTab(tab);
   };
 
@@ -111,7 +114,7 @@ const Profile: React.FC = () => {
               { key: 'reference', label: '教学视频' }
             ]}
             activeKey={activeTab}
-            onChange={(key) => handleTabChange(key as 'user' | 'reference')}
+            onChange={(key) => handleTabChange(key as MainTab)}
           />
         </div>
 
@@ -122,7 +125,7 @@ const Profile: React.FC = () => {
           userVideos.length === 0 ? (
             <div className="videos-empty">
               <p>还没有发布过用户视频</p>
-              <p className="empty-hint">快去上传你的第一个视频吧！</p>
+              <p className="empty-hint">跟着教学视频录制，保存后会出现在这里</p>
             </div>
           ) : (
             <div className="profile-videos-grid">
@@ -133,6 +136,7 @@ const Profile: React.FC = () => {
                   videoType="user"
                   title={video.title || video.filename}
                   author={video.author}
+                  visibility={video.visibility}
                   onClick={() => handleVideoClick(video.video_id, 'user')}
                 />
               ))}
@@ -166,3 +170,5 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+
+

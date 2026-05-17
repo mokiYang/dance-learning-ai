@@ -78,6 +78,36 @@
   opacity: 1;
 }
 
+// 私密视频徽标：缩略图左下角"仅自己可见"胶囊
+.visibility-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none; // 不拦截卡片点击
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 5;
+
+  &__icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  &__text {
+    line-height: 1;
+  }
+}
+
 // 删除确认弹窗
 .delete-confirm-overlay {
   position: absolute;
@@ -281,6 +311,18 @@
 
 // 移动端适配
 @media (max-width: 768px) {
+  .visibility-badge {
+    left: 8px;
+    bottom: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    gap: 5px;
+
+    &__icon {
+      font-size: 12px;
+    }
+  }
+
   .video-card {
     .video-thumbnail-wrapper {
       height: 280px; // 双栏时稍微降低高度

@@ -1,0 +1,187 @@
+.beginner-video-list-container {
+  width: 100%;
+  padding: 70px 20px 80px 20px; // 与首页 VideoList 保持一致
+}
+
+.beginner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  &__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #667eea;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    flex: 0 0 auto;
+
+    .back-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    &:hover {
+      background: rgba(102, 126, 234, 0.08);
+      color: #5a6fd8;
+    }
+
+    &:active {
+      transform: translateX(-1px);
+    }
+  }
+
+  &__title {
+    flex: 1;
+    margin: 0;
+    text-align: center;
+    color: #333;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  // 占位元素：让标题保持视觉居中
+  &__placeholder {
+    flex: 0 0 auto;
+    width: 96px; // 与返回按钮宽度大致一致
+    height: 1px;
+  }
+}
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 24px;
+  width: 100%;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 80px 20px;
+  color: #999;
+  font-size: 16px;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 2px dashed #e0e0e0;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+.loading-spinner {
+  font-size: 18px;
+  color: #667eea;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  gap: 16px;
+
+  .error-message {
+    color: #d32f2f;
+    font-size: 16px;
+  }
+
+  button {
+    padding: 10px 24px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      background: #764ba2;
+      transform: translateY(-2px);
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .beginner-video-list-container {
+    padding: 60px 12px 70px 12px;
+  }
+
+  .beginner-header {
+    padding: 10px 12px;
+    margin-bottom: 16px;
+
+    &__back {
+      padding: 4px 8px;
+      font-size: 13px;
+
+      .back-text {
+        display: none; // 移动端只保留箭头节省空间
+      }
+    }
+
+    &__title {
+      font-size: 15px;
+    }
+
+    &__placeholder {
+      width: 32px;
+    }
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .empty-state {
+    padding: 60px 16px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .beginner-video-list-container {
+    padding: 56px 10px 65px 10px;
+  }
+
+  .video-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .empty-state {
+    padding: 40px 12px;
+    font-size: 13px;
+  }
+}

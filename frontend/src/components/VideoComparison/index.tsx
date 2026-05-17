@@ -242,6 +242,12 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
         showToast('用户视频上传成功！视频已保存到您的视频列表', 'success', 3000);
         setShowUploadForm(false);
         setVideoTitle('');
+        // 通知 PromotionBar 重新评估新手入门完成状态。
+        // 用户每完成一个作品就广播一次，由 PromotionBar 监听后向后端核对：
+        //  - 不在这里判断 reference 是否 beginner（前端不必知道，后端会算）
+        //  - 即使 PromotionBar 当前未挂载（用户在对比页），事件被丢弃也无副作用：
+        //    回到首页 mount 时会再拉一次状态作为兜底
+        window.dispatchEvent(new CustomEvent('onboardingChanged'));
       } else {
         showToast(`上传失败: 未知错误`, 'error');
       }

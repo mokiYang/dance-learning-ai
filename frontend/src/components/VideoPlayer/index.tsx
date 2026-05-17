@@ -368,12 +368,15 @@ const VideoPlayer: React.FC = () => {
       
       // 将录制的视频数据传递到结果页面
       const videoUrl = URL.createObjectURL(recordedBlob);
+      // 根据实际录制使用的 MIME 类型生成对应的文件后缀，避免容器与扩展名不一致
+      // 导致 iOS Safari 等严格按 MIME 校验的浏览器播放失败
+      const fileExt = videoRecorder.current.getFileExtension();
       navigate(`/result/${id}`, { 
         state: { 
           recordedVideo: recordedBlob,
           recordedVideoUrl: videoUrl,
           videoInfo: {
-            filename: `recorded_${Date.now()}.webm`,
+            filename: `recorded_${Date.now()}.${fileExt}`,
             size: recordedBlob.size,
             type: recordedBlob.type
           }

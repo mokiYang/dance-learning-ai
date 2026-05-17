@@ -154,6 +154,7 @@ export interface ReferenceVideo {
   thumbnail_path?: string;
   has_pose_data?: boolean;
   has_pose_video?: boolean;
+  category?: 'normal' | 'beginner';
 }
 
 export interface UploadResult {
@@ -227,7 +228,8 @@ class ApiService {
     videoFile: File, 
     description?: string, 
     author?: string,
-    title?: string
+    title?: string,
+    category?: 'normal' | 'beginner'
   ): Promise<UploadResult> {
     const formData = new FormData();
     formData.append('video', videoFile);
@@ -244,20 +246,31 @@ class ApiService {
       formData.append('title', title);
     }
 
+    if (category) {
+      formData.append('category', category);
+    }
+
     return this.makeRequest(`${this.baseUrl}/upload-reference`, {
       method: 'POST',
       body: formData,
     });
   }
 
-  // 获取参考视频列表
-  async getReferenceVideos(): Promise<{ success: boolean; videos: ReferenceVideo[] }> {
-    return this.makeRequest(`${this.baseUrl}/reference-videos`);
+  // 获取参考视频列表（可按分类过滤）
+  async getReferenceVideos(category?: 'normal' | 'beginner'): Promise<{ success: boolean; videos: ReferenceVideo[] }> {
+    const url = category
+      ? `${this.baseUrl}/reference-videos?category=${category}`
+      : `${this.baseUrl}/reference-videos`;
+    return this.makeRequest(url);
   }
 
   // 获取用户视频列表
-  async getUserVideos(): Promise<{ success: boolean; videos: any[] }> {
-    return this.makeRequest(`${this.baseUrl}/user-videos`);
+  // visibility: 'public' | 'private'，可选；不传则返回当前用户全部视频
+  async getUserVideos(visibility?: 'public' | 'private'): Promise<{ success: boolean; videos: any[] }> {
+    const url = visibility
+      ? `${this.baseUrl}/user-videos?visibility=${visibility}`
+      : `${this.baseUrl}/user-videos`;
+    return this.makeRequest(url);
   }
 
   async getPoseData(videoId: string): Promise<{
@@ -521,6 +534,17 @@ class ApiService {
     return this.makeRequest(`${this.baseUrl}/auth/logout`, {
       method: 'POST',
     });
+  }
+
+  // 获取当前用户的新手入门完成状态（用于首页 PromotionBar 自动隐藏）
+  async getOnboardingStatus(): Promise<{
+    success: boolean;
+    total_beginner?: number;
+    completed_beginner?: number;
+    has_completed_beginner?: boolean;
+    error?: string;
+  }> {
+    return this.makeRequest(`${this.baseUrl}/users/me/onboarding-status`);
   }
 
   // ==================== 评论相关 API ====================

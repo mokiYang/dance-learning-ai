@@ -78,7 +78,8 @@ class DanceDatabase:
                 tags TEXT,
                 author TEXT,
                 title TEXT,
-                thumbnail_path TEXT
+                thumbnail_path TEXT,
+                category TEXT DEFAULT 'normal'  -- 'normal' 普通教学视频 / 'beginner' 新手入门视频
             )
         ''')
         
@@ -93,6 +94,13 @@ class DanceDatabase:
         try:
             cursor.execute("ALTER TABLE reference_videos ADD COLUMN thumbnail_path TEXT")
             print("已添加 thumbnail_path 字段到 reference_videos 表")
+        except sqlite3.OperationalError:
+            # 字段已存在，忽略错误
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE reference_videos ADD COLUMN category TEXT DEFAULT 'normal'")
+            print("已添加 category 字段到 reference_videos 表")
         except sqlite3.OperationalError:
             # 字段已存在，忽略错误
             pass
@@ -113,7 +121,9 @@ class DanceDatabase:
                 pose_extraction_error TEXT,
                 pose_extraction_progress INTEGER DEFAULT 0,
                 user_id TEXT,
-                session_id TEXT
+                session_id TEXT,
+                reference_video_id TEXT,         -- 投稿时所跟学的教学视频 id（NULL 表示直传作品）
+                visibility TEXT DEFAULT 'public' -- 'public' 公开 / 'private' 仅作者本人可见
             )
         ''')
         
@@ -133,6 +143,18 @@ class DanceDatabase:
         try:
             cursor.execute("ALTER TABLE user_videos ADD COLUMN title TEXT")
             print("已添加 title 字段到 user_videos 表")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE user_videos ADD COLUMN reference_video_id TEXT")
+            print("已添加 reference_video_id 字段到 user_videos 表")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            cursor.execute("ALTER TABLE user_videos ADD COLUMN visibility TEXT DEFAULT 'public'")
+            print("已添加 visibility 字段到 user_videos 表")
         except sqlite3.OperationalError:
             pass
         
@@ -230,7 +252,7 @@ class DanceDatabase:
     def add_reference_video(self, video_id: str, filename: str, file_path: str, 
                            duration: float = None, fps: float = None, 
                            description: str = None, tags: str = None, author: str = None, title: str = None,
-                           thumbnail_path: str = None) -> bool:
+                           thumbnail_path: str = None, category: str = 'normal') -> bool:
         """添加教学视频记录"""
         try:
             conn = self.get_connection()
@@ -238,9 +260,9 @@ class DanceDatabase:
             
             cursor.execute('''
                 INSERT INTO reference_videos 
-                (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path))
+                (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path, category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (video_id, filename, file_path, duration, fps, description, tags, author, title, thumbnail_path, category))
             
             conn.commit()
             conn.close()
@@ -254,17 +276,29 @@ class DanceDatabase:
     
     def add_user_video(self, video_id: str, filename: str, file_path: str,
                       duration: float = None, fps: float = None,
-                      user_id: str = None, session_id: str = None, title: str = None) -> bool:
-        """添加用户视频记录"""
+                      user_id: str = None, session_id: str = None, title: str = None,
+                      reference_video_id: str = None, visibility: str = 'public') -> bool:
+        """添加用户视频记录
+
+        Args:
+            reference_video_id: 关联的教学视频 id（投稿"录制同款"时由调用方传入），用于：
+                - 个人页区分跟学作品 / 直传作品
+                - 新手入门完成度判定
+            visibility: 'public' 公开 / 'private' 仅作者本人可见
+        """
+        if visibility not in ('public', 'private'):
+            visibility = 'public'
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
                 INSERT INTO user_videos 
-                (video_id, filename, file_path, duration, fps, user_id, session_id, title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (video_id, filename, file_path, duration, fps, user_id, session_id, title))
+                (video_id, filename, file_path, duration, fps, user_id, session_id, title,
+                 reference_video_id, visibility)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (video_id, filename, file_path, duration, fps, user_id, session_id, title,
+                  reference_video_id, visibility))
             
             conn.commit()
             conn.close()
@@ -489,16 +523,27 @@ class DanceDatabase:
             print(f"获取姿势数据失败: {e}")
             return []
     
-    def get_reference_videos(self) -> List[Dict]:
-        """获取所有教学视频"""
+    def get_reference_videos(self, category: str = None) -> List[Dict]:
+        """获取教学视频列表
+
+        Args:
+            category: 可选，按分类过滤（'normal' / 'beginner'）。不传则返回全部。
+        """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            cursor.execute('''
-                SELECT * FROM reference_videos 
-                ORDER BY upload_time DESC
-            ''')
+            if category:
+                cursor.execute('''
+                    SELECT * FROM reference_videos
+                    WHERE COALESCE(category, 'normal') = ?
+                    ORDER BY upload_time DESC
+                ''', (category,))
+            else:
+                cursor.execute('''
+                    SELECT * FROM reference_videos 
+                    ORDER BY upload_time DESC
+                ''')
             
             videos = []
             for row in cursor.fetchall():
@@ -509,26 +554,103 @@ class DanceDatabase:
         except Exception as e:
             print(f"获取教学视频失败: {e}")
             return []
+
+    def get_user_onboarding_status(self, user_id: str) -> Dict:
+        """计算用户新手入门完成状态
+
+        判定规则（与产品对齐）：用户**保存（投稿）**了每一支 beginner 类教学视频的同款作品，
+        才视为完成新手入门。判定基于 user_videos.reference_video_id，而不是临时的对比记录：
+            user_videos.user_id = ? AND user_videos.reference_video_id IN
+                (SELECT video_id FROM reference_videos WHERE category='beginner')
+
+        Returns:
+            {
+                'total_beginner': N,
+                'completed_beginner': M,        # 已投稿覆盖的 beginner 视频去重数
+                'has_completed_beginner': bool, # N>0 且 M>=N
+            }
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # 1) 总 beginner 视频数
+            cursor.execute('''
+                SELECT COUNT(*) AS cnt
+                FROM reference_videos
+                WHERE COALESCE(category, 'normal') = 'beginner'
+            ''')
+            total_beginner = cursor.fetchone()['cnt']
+
+            if total_beginner == 0:
+                conn.close()
+                return {
+                    'total_beginner': 0,
+                    'completed_beginner': 0,
+                    'has_completed_beginner': False,  # 没有 beginner 视频时，不视为完成
+                }
+
+            # 2) 该用户的 user_videos 中已"投稿"覆盖的 beginner reference 去重数
+            cursor.execute('''
+                SELECT COUNT(DISTINCT uv.reference_video_id) AS cnt
+                FROM user_videos uv
+                JOIN reference_videos rv ON rv.video_id = uv.reference_video_id
+                WHERE uv.user_id = ?
+                  AND uv.reference_video_id IS NOT NULL
+                  AND COALESCE(rv.category, 'normal') = 'beginner'
+            ''', (str(user_id),))
+            completed_beginner = cursor.fetchone()['cnt']
+
+            conn.close()
+
+            return {
+                'total_beginner': total_beginner,
+                'completed_beginner': completed_beginner,
+                'has_completed_beginner': completed_beginner >= total_beginner,
+            }
+        except Exception as e:
+            print(f"获取新手入门完成状态失败: {e}")
+            # 失败时按"未完成"返回，由前端决定是否展示 bar
+            return {
+                'total_beginner': 0,
+                'completed_beginner': 0,
+                'has_completed_beginner': False,
+            }
     
-    def get_user_videos(self, user_id: str = None) -> List[Dict]:
-        """获取用户视频"""
+    def get_user_videos(self, user_id: str = None, visibility: str = None) -> List[Dict]:
+        """获取用户视频
+
+        Args:
+            user_id: 指定查询某个用户的视频；不传则只返回永久存储的所有公开内容
+            visibility: 'public' / 'private'，可选；不传则不限制
+        """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
             if user_id:
                 # 只查询指定用户的视频，且排除临时文件路径
-                cursor.execute('''
-                    SELECT * FROM user_videos 
-                    WHERE user_id = ? 
-                      AND (file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%')
-                    ORDER BY upload_time DESC
-                ''', (user_id,))
+                if visibility in ('public', 'private'):
+                    cursor.execute('''
+                        SELECT * FROM user_videos
+                        WHERE user_id = ?
+                          AND COALESCE(visibility, 'public') = ?
+                          AND (file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%')
+                        ORDER BY upload_time DESC
+                    ''', (user_id, visibility))
+                else:
+                    cursor.execute('''
+                        SELECT * FROM user_videos 
+                        WHERE user_id = ? 
+                          AND (file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%')
+                        ORDER BY upload_time DESC
+                    ''', (user_id,))
             else:
-                # 如果没有指定user_id，只返回永久存储的视频
+                # 不指定用户：默认只返回 public + 永久存储（首页用户视频 tab 的语义）
                 cursor.execute('''
                     SELECT * FROM user_videos 
-                    WHERE file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%'
+                    WHERE COALESCE(visibility, 'public') = 'public'
+                      AND (file_path LIKE '%uploads/user%' OR file_path LIKE '%uploads\\user%')
                     ORDER BY upload_time DESC
                 ''')
             

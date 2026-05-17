@@ -16,6 +16,8 @@ export interface VideoCardProps {
   initialLikeCount?: number;
   initialIsLiked?: boolean;
   onDeleted?: () => void;
+  // 视频可见性。'private' 时缩略图左下角展示"仅自己可见"徽标；其它情况不展示
+  visibility?: 'public' | 'private';
 }
 
 const VideoCard: React.FC<VideoCardProps> = ({
@@ -31,6 +33,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   initialLikeCount = 0,
   initialIsLiked = false,
   onDeleted,
+  visibility,
 }) => {
   const { isAuthenticated, isAdmin } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
@@ -147,6 +150,13 @@ const VideoCard: React.FC<VideoCardProps> = ({
               <br />
               <span className="processing-progress">{processingProgress}%</span>
             </div>
+          </div>
+        )}
+        {/* 私密视频徽标：左下角 "仅自己可见" */}
+        {visibility === 'private' && !isProcessing && (
+          <div className="visibility-badge" aria-label="仅自己可见">
+            <span className="visibility-badge__icon" aria-hidden="true">🔒</span>
+            <span className="visibility-badge__text">仅自己可见</span>
           </div>
         )}
         {/* 管理员删除按钮 */}

@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, useParams, useNavigate, useSear
 import React from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import VideoList from './components/VideoList';
+import BeginnerVideoList from './components/BeginnerVideoList';
 import VideoPlayer from './components/VideoPlayer';
 import UserVideoPlayer from './components/UserVideoPlayer';
 import VideoResult from './components/VideoResult';
@@ -49,12 +50,12 @@ const VideoComparisonPage: React.FC = () => {
 };
 
 function App() {
+  // 通过自定义事件触发上传，由当前路由对应的列表页负责响应：
+  //  - VideoList            （首页）       监听后调用其 VideoUpload
+  //  - BeginnerVideoList    （新手入门页） 监听后仅 admin 可触发
+  // 这样避免了 querySelector 误选到错误的 file input 的问题。
   const handleUploadClick = () => {
-    // 触发上传逻辑，可以通过 ref 或者状态管理来触发 VideoList 中的上传
-    const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-    if (uploadInput) {
-      uploadInput.click();
-    }
+    window.dispatchEvent(new CustomEvent('triggerUpload'));
   };
 
   return (
@@ -69,6 +70,7 @@ function App() {
           <main className="main-content">
             <Routes>
               <Route path="/" element={<VideoList />} />
+              <Route path="/beginner" element={<BeginnerVideoList />} />
               <Route path="/video/:id" element={<VideoPlayer />} />
               <Route path="/user-video/:id" element={<UserVideoPlayer />} />
               <Route path="/result/:id" element={<VideoResult />} />

@@ -2600,16 +2600,26 @@ def delete_video(video_id):
 @app.route('/api/user-videos', methods=['GET'])
 @require_auth
 def list_user_videos():
-    """列出用户视频（只返回永久存储的视频）"""
+    """列出当前登录用户的永久存储视频。
+
+    Query 参数：
+      visibility = public | private  可选，按可见性过滤；不传则返回当前用户的全部视频。
+
+    隐私边界：本接口始终限定 user_id=current_user，永远不会把别人的 private 暴露出来。
+    """
     try:
         # 获取当前登录用户ID
         current_user_id = str(request.current_user['user_id'])
         current_username = request.current_user['username']
-        
+
+        visibility = request.args.get('visibility')
+        if visibility not in ('public', 'private'):
+            visibility = None
+
         # 只获取当前用户的永久视频（有user_id且file_path在uploads/user目录下）
-        all_videos = db.get_user_videos(current_user_id)
+        all_videos = db.get_user_videos(current_user_id, visibility=visibility)
         
-        print(f"[用户视频列表] 查询用户ID {current_user_id}，找到 {len(all_videos)} 个视频")
+        print(f"[用户视频列表] 查询用户ID {current_user_id} visibility={visibility}，找到 {len(all_videos)} 个视频")
         
         # 过滤出永久存储的视频（排除临时文件路径）
         permanent_videos = []
@@ -2888,8 +2898,32 @@ def upload_reference_video():
         author = request.form.get('author', '')
         title = request.form.get('title', '')
 
+        # 视频分类：'normal' (普通教学视频，所有登录用户均可上传) / 'beginner' (新手入门视频，仅管理员)
+        category = request.form.get('category', 'normal')
+        if category not in ('normal', 'beginner'):
+            category = 'normal'
+        if category == 'beginner':
+            # 校验当前用户是否为管理员
+            current_user = getattr(request, 'current_user', None) or {}
+            user_role = current_user.get('role', 'user')
+            if user_role != 'admin':
+                # 兜底：从数据库再查一次，避免 token 中 role 过期
+                user = db.get_user_by_id(current_user.get('user_id')) if current_user.get('user_id') else None
+                user_role = (user or {}).get('role', 'user') or 'user'
+            if user_role != 'admin':
+                # 安全清理已保存的文件
+                try:
+                    if os.path.exists(original_filepath):
+                        os.remove(original_filepath)
+                except Exception:
+                    pass
+                return jsonify({
+                    'success': False,
+                    'error': '只有管理员可以上传新手入门教学视频'
+                }), 403
+
         # 保存到数据库（保存原始视频路径，用于播放）
-        if not db.add_reference_video(video_id, filename, original_filepath, duration, fps, description, tags, author, title, thumbnail_path):
+        if not db.add_reference_video(video_id, filename, original_filepath, duration, fps, description, tags, author, title, thumbnail_path, category):
             return jsonify({
                 'success': False,
                 'error': '保存到数据库失败'
@@ -2921,6 +2955,7 @@ def upload_reference_video():
             'author': author,
             'title': title,
             'thumbnail_path': thumbnail_path,
+            'category': category,
             'pose_data_extracted': False,
             'pose_video_generated': False,
             'message': '参考视频上传成功，正在后台处理骨骼数据'
@@ -3041,7 +3076,8 @@ def upload_user_video_from_work():
             }), 404
         
         user_video_id = comparison_record['user_video_id']
-        
+        reference_video_id = comparison_record.get('reference_video_id')
+
         # 获取用户视频信息
         user_video = db.get_video_by_id(user_video_id, 'user')
         if not user_video:
@@ -3049,7 +3085,7 @@ def upload_user_video_from_work():
                 'success': False,
                 'error': '用户视频不存在'
             }), 404
-        
+
         # 获取原始视频文件路径
         original_file_path = user_video.get('file_path')
         if not original_file_path or not os.path.exists(original_file_path):
@@ -3057,6 +3093,15 @@ def upload_user_video_from_work():
                 'success': False,
                 'error': '原始视频文件不存在'
             }), 404
+
+        # 根据所跟学的教学视频分类决定可见性：
+        #   beginner -> private（基础动作数据，仅作者本人可见）
+        #   normal / 其他 -> public（社交属性，对所有用户可见）
+        visibility = 'public'
+        if reference_video_id:
+            reference_video = db.get_video_by_id(reference_video_id, 'reference')
+            if reference_video and (reference_video.get('category') or 'normal') == 'beginner':
+                visibility = 'private'
 
         # 生成唯一视频ID和任务ID
         new_video_id = str(uuid.uuid4())
@@ -3082,14 +3127,18 @@ def upload_user_video_from_work():
         current_user_id = str(request.current_user['user_id'])
 
         # 保存到数据库（使用user_id，不使用session_id）
-        if not db.add_user_video(new_video_id, filename, new_filepath, duration, fps, user_id=current_user_id, title=title):
+        if not db.add_user_video(
+            new_video_id, filename, new_filepath, duration, fps,
+            user_id=current_user_id, title=title,
+            reference_video_id=reference_video_id, visibility=visibility,
+        ):
             return jsonify({
                 'success': False,
                 'error': '保存到数据库失败'
             }), 500
 
         # 用户视频不需要处理骨骼数据，直接返回成功
-        print(f"用户视频 {filename} 从workId {work_id} 上传成功（永久存储）")
+        print(f"用户视频 {filename} 从workId {work_id} 上传成功（永久存储, visibility={visibility}）")
 
         return jsonify({
             'success': True,
@@ -3099,6 +3148,8 @@ def upload_user_video_from_work():
             'duration': duration,
             'fps': fps,
             'title': title,
+            'visibility': visibility,
+            'reference_video_id': reference_video_id,
             'message': '用户视频上传成功'
         })
 
@@ -3112,9 +3163,13 @@ def upload_user_video_from_work():
 
 @app.route('/api/reference-videos', methods=['GET'])
 def list_reference_videos():
-    """列出所有参考视频"""
+    """列出参考视频，可通过 ?category=beginner|normal 过滤"""
     try:
-        videos = db.get_reference_videos()
+        category = request.args.get('category')
+        if category and category not in ('normal', 'beginner'):
+            category = None
+
+        videos = db.get_reference_videos(category=category)
         
         # 为每个视频添加是否已提取姿势数据和标记骨骼视频的标记
         for video in videos:
@@ -3126,6 +3181,28 @@ def list_reference_videos():
             'videos': videos
         })
 
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/users/me/onboarding-status', methods=['GET'])
+@require_auth
+def get_my_onboarding_status():
+    """获取当前用户的新手入门完成状态。
+
+    用于首页运营 PromotionBar 的自动隐藏：当 has_completed_beginner=True 时，
+    前端不再展示提示 bar。
+    """
+    try:
+        user_id = request.current_user['user_id']
+        status = db.get_user_onboarding_status(user_id)
+        return jsonify({
+            'success': True,
+            **status,
+        })
     except Exception as e:
         return jsonify({
             'success': False,

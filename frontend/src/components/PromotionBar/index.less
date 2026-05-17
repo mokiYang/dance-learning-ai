@@ -1,0 +1,105 @@
+.promotion-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.35);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &__content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__text {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 12px;
+  }
+
+  &__arrow {
+    transition: transform 0.2s ease;
+  }
+
+  &:hover &__arrow {
+    transform: translateX(2px);
+  }
+
+  &__close {
+    margin-left: 12px;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.2s ease, color 0.2s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .promotion-bar {
+    padding: 10px 12px;
+
+    &__text {
+      font-size: 13px;
+    }
+
+    &__cta {
+      font-size: 12px;
+      padding: 3px 8px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .promotion-bar {
+    &__cta {
+      // 小屏幕只保留箭头节省空间，但保留语义
+      padding: 3px 6px;
+    }
+  }
+}

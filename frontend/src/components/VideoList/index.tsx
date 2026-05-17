@@ -4,6 +4,7 @@ import { apiService, ReferenceVideo } from "../../services/api";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
 import VideoCard from "../VideoCard";
 import Tabs from "../Tabs";
+import PromotionBar from "../PromotionBar";
 import { showToast } from "../Toast/ToastContainer";
 import "./index.less";
 
@@ -98,8 +99,8 @@ const VideoList: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // 创建新的请求并保存引用
-      const request = apiService.getReferenceVideos();
+      // 首页只展示普通教学视频，新手入门视频在 /beginner 单独展示
+      const request = apiService.getReferenceVideos('normal');
       requestRef.current = request;
 
       const response = await request;
@@ -128,7 +129,8 @@ const VideoList: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      const response = await apiService.getUserVideos();
+      // 首页"用户视频" tab 只展示公开视频；私密视频仅在个人页"私密视频"tab 可见
+      const response = await apiService.getUserVideos('public');
       if (response.success) {
         setUserVideos(response.videos || []);
       } else {
@@ -261,6 +263,9 @@ const VideoList: React.FC = () => {
         onUploadSuccess={handleUploadSuccess}
       />
       
+      {/* 运营提示 Bar：登录用户可见，可关闭 */}
+      <PromotionBar />
+
       {/* Tab 切换 */}
       <div className="video-tabs-wrapper">
         <Tabs
