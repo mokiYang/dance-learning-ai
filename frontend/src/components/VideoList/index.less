@@ -8,14 +8,23 @@
 }
 
 .video-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 24px;
+  column-count: 3;
+  column-gap: 26px;
   width: 100%;
+
+  // CSS Columns 让不同高度的卡片按列自然衔接，形成瀑布流。
+  > .video-card {
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 26px;
+    break-inside: avoid;
+  }
 }
 
 .empty-state {
-  grid-column: 1 / -1;
+  display: inline-block;
+  width: 100%;
+  break-inside: avoid;
   text-align: center;
   padding: 80px 20px;
   color: #999;
@@ -79,6 +88,17 @@
   }
 }
 
+@media (max-width: 900px) {
+  .video-grid {
+    column-count: 2;
+    column-gap: 16px;
+
+    > .video-card {
+      margin-bottom: 16px;
+    }
+  }
+}
+
 // 移动端适配
 @media (max-width: 768px) {
   .video-list-container {
@@ -86,8 +106,11 @@
   }
 
   .video-grid {
-    grid-template-columns: repeat(2, 1fr); // 双栏布局
-    gap: 12px;
+    column-gap: 12px;
+
+    > .video-card {
+      margin-bottom: 12px;
+    }
   }
 
   .video-tabs {
@@ -108,14 +131,26 @@
   }
 }
 
+@media (max-width: 550px) {
+  .video-grid {
+    column-count: 1;
+    column-gap: 0;
+
+    > .video-card {
+      margin-bottom: 16px;
+    }
+  }
+}
+
 @media (max-width: 480px) {
   .video-list-container {
     padding: 56px 10px 65px 10px;
   }
 
   .video-grid {
-    grid-template-columns: repeat(2, 1fr); // 双栏布局
-    gap: 10px;
+    > .video-card {
+      margin-bottom: 16px;
+    }
   }
 
   .video-tabs {

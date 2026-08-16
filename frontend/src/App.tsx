@@ -10,6 +10,7 @@ import VideoComparison from './components/VideoComparison';
 import Profile from './components/Profile';
 import Header from './components/Header';
 import TabBar from './components/TabBar';
+import UserGuide from './components/UserGuide';
 import ToastContainer from './components/Toast/ToastContainer';
 import './App.less';
 
@@ -64,6 +65,8 @@ function App() {
         <div className="App">
           {/* 全局通知组件 */}
           <ToastContainer />
+          {/* 首次访问自动展示，也可通过悬浮按钮再次打开 */}
+          <UserGuide />
           {/* 顶部导航栏 */}
           <Header />
           {/* 主内容区域 */}
@@ -86,4 +89,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
