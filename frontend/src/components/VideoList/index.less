@@ -14,10 +14,31 @@
 
   // CSS Columns 让不同高度的卡片按列自然衔接，形成瀑布流。
   > .video-card {
-    display: inline-block;
+    display: block;
     width: 100%;
     margin-bottom: 26px;
     break-inside: avoid;
+
+    // 首页采用小红书式错落比例。原 VideoCard 的缩略图固定为 240px，
+    // 即使使用 CSS Columns 也会看起来像普通网格，因此在瀑布流容器内覆盖它。
+    .video-thumbnail-wrapper {
+      height: auto;
+      aspect-ratio: 4 / 5;
+    }
+
+    &:nth-child(6n + 2),
+    &:nth-child(6n + 5) {
+      .video-thumbnail-wrapper {
+        aspect-ratio: 1 / 1;
+      }
+    }
+
+    &:nth-child(6n + 3),
+    &:nth-child(6n + 4) {
+      .video-thumbnail-wrapper {
+        aspect-ratio: 3 / 4;
+      }
+    }
   }
 }
 

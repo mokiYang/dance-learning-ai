@@ -158,7 +158,7 @@ const BeginnerVideoList: React.FC = () => {
           <button onClick={() => fetchVideos()}>重试</button>
         </div>
       ) : (
-        <div className="video-grid">
+        <div className="beginner-video-grid">
           {videos.length === 0 ? (
             <div className="empty-state">
               <p>{isAdmin ? "暂无新手入门视频，点击底部 + 上传第一个吧！" : "暂无新手入门视频，敬请期待"}</p>
