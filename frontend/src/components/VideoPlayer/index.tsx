@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { apiService, ReferenceVideo, getVideoUrl, getThumbnailUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { VideoRecorder } from '../../utils/videoRecorder';
@@ -9,6 +10,7 @@ import PoseCanvas from '../PoseCanvas';
 import './index.less';
 
 const VideoPlayer: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -43,14 +45,14 @@ const VideoPlayer: React.FC = () => {
   const [showPose, setShowPose] = useState(true);
 
   const videoRecorder = useRef<VideoRecorder>(new VideoRecorder());
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const cameraCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 根据ID获取视频数据
   useEffect(() => {
     const fetchVideo = async () => {
       if (!id) {
-        setError('视频ID不能为空');
+        setError(t('common.videoIdRequired'));
         setLoading(false);
         return;
       }
@@ -71,13 +73,13 @@ const VideoPlayer: React.FC = () => {
               setCommentCount(commentsResponse.comments?.length || 0);
             }
           } else {
-            setError('未找到指定的视频');
+            setError(t('common.videoNotFound'));
           }
         } else {
-          setError('获取视频数据失败');
+          setError(t('common.videoDataFailed'));
         }
       } catch (err) {
-        setError('网络错误，请稍后重试');
+        setError(t('common.networkError'));
         console.error('获取视频数据失败:', err);
       } finally {
         setLoading(false);
@@ -85,7 +87,7 @@ const VideoPlayer: React.FC = () => {
     };
 
     fetchVideo();
-  }, [id]);
+  }, [id, i18n.resolvedLanguage]);
 
   useEffect(() => {
     if (error && !loading) {
@@ -218,7 +220,7 @@ const VideoPlayer: React.FC = () => {
       }
     } catch (error) {
       console.error('开始录制失败:', error);
-      alert('录制失败，请检查摄像头权限');
+      alert(t('player.recordFailed'));
     }
   };
 
@@ -245,7 +247,7 @@ const VideoPlayer: React.FC = () => {
 
     } catch (error) {
       console.error('启动跟学模式失败:', error);
-      alert('无法访问摄像头，请检查权限设置');
+      alert(t('player.cameraDenied'));
     }
   };
 
@@ -284,7 +286,7 @@ const VideoPlayer: React.FC = () => {
       console.log(`检测到 ${videoDevices.length} 个摄像头:`, videoDevices.map(d => d.label));
 
       if (videoDevices.length < 2) {
-        alert('您的设备只有一个摄像头，无法切换');
+        alert(t('player.singleCamera'));
         // 恢复原来的摄像头
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -315,7 +317,7 @@ const VideoPlayer: React.FC = () => {
       setFacingMode(newFacingMode);
     } catch (error) {
       console.error('切换摄像头失败:', error);
-      alert(`切换摄像头失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      alert(t('player.switchCameraFailed', { message: error instanceof Error ? error.message : t('common.unknownError') }));
       
       // 恢复原来的摄像头
       try {
@@ -331,7 +333,7 @@ const VideoPlayer: React.FC = () => {
         setIsCameraReady(true);
       } catch (e) {
         console.error('恢复摄像头失败:', e);
-        alert('摄像头访问失败，请重新开启跟学模式');
+        alert(t('player.cameraRecoveryFailed'));
         setIsCameraActive(false);
       }
     }
@@ -473,7 +475,7 @@ const VideoPlayer: React.FC = () => {
   // 骨骼显隐按钮（录制期间不显示，避免影响跟学体验）
   if (!isRecording && !hasStartedCountdown && !isCameraActive) {
     rightButtons.push({
-      label: showPose ? '隐藏骨骼' : '显示骨骼',
+      label: t(showPose ? 'player.hidePose' : 'player.showPose'),
       className: 'btn-pose-toggle',
       onClick: () => setShowPose(v => !v),
       visible: true,
@@ -485,7 +487,7 @@ const VideoPlayer: React.FC = () => {
     label: (
       <>
         <span className="comment-icon">💬</span>
-        <span className="comment-text">评论</span>
+        <span className="comment-text">{t('common.comments')}</span>
         {commentCount > 0 && (
           <span className="comment-count">{commentCount}</span>
         )}
@@ -499,7 +501,7 @@ const VideoPlayer: React.FC = () => {
   
   if (isAuthenticated) {
     rightButtons.push({
-      label: '录同款',
+      label: t('player.recordSame'),
       className: 'btn-success',
       onClick: handleFollowLearning,
       disabled: isCameraActive,
@@ -507,7 +509,7 @@ const VideoPlayer: React.FC = () => {
     });
   } else {
     rightButtons.push({
-      label: '登录后可录同款',
+      label: t('player.loginToRecord'),
       className: 'btn-login-required',
       onClick: () => navigate('/profile'),
       visible: true,
@@ -517,7 +519,7 @@ const VideoPlayer: React.FC = () => {
   // 摄像头就绪后显示开始录制按钮
   if (isCameraActive && isCameraReady && !isRecording && !hasStartedCountdown) {
     rightButtons.push({
-      label: '开始录制',
+      label: t('player.startRecording'),
       className: 'btn-record-start',
       onClick: handleStartRecordingClick,
       visible: true,
@@ -528,14 +530,14 @@ const VideoPlayer: React.FC = () => {
   if (isRecording) {
     rightButtons.push(
       {
-        label: isPlaying ? '暂停' : '继续',
+        label: t(isPlaying ? 'player.pause' : 'player.continue'),
         className: 'btn-warning',
         onClick: handlePauseRecording,
         disabled: !isRecording,
         visible: true,
       },
       {
-        label: '结束',
+        label: t('player.finish'),
         className: 'btn-danger',
         onClick: handleStopRecording,
         disabled: !isRecording,
@@ -566,7 +568,7 @@ const VideoPlayer: React.FC = () => {
               className="btn-switch-camera"
               onClick={handleSwitchCamera}
               disabled={isRecording}
-              title={facingMode === 'user' ? '切换到后置' : '切换到前置'}
+              title={t(facingMode === 'user' ? 'player.switchRear' : 'player.switchFront')}
             >
               <svg viewBox="0 0 1024 1024" width="28" height="28" fill="currentColor">
                 <path d="M719.127273 193.163636c-2.327273 2.327273-4.654545 4.654545-6.981818 4.654546l-134.981819 55.854545c-11.636364 6.981818-25.6 0-32.581818-11.636363-6.981818-11.636364 0-25.6 11.636364-32.581819l111.709091-44.218181-67.490909-111.709091c-6.981818-11.636364 0-25.6 11.636363-32.581818 11.636364-6.981818 25.6 0 32.581818 11.636363L721.454545 165.236364c2.327273 4.654545 2.327273 11.636364 2.327273 18.618181-2.327273 2.327273-2.327273 4.654545-4.654545 9.309091zM309.527273 812.218182c2.327273-2.327273 4.654545-4.654545 6.981818-4.654546l134.981818-55.854545c11.636364-6.981818 25.6 0 32.581818 11.636364 6.981818 11.636364 0 25.6-11.636363 32.581818L358.4 837.818182l67.490909 111.709091c6.981818 11.636364 0 25.6-11.636364 32.581818-11.636364 6.981818-25.6 0-32.581818-11.636364L304.872727 837.818182c-2.327273-4.654545-2.327273-11.636364-2.327272-18.618182l6.981818-6.981818z"/>
@@ -626,7 +628,7 @@ const VideoPlayer: React.FC = () => {
         onBack={handleBackToList}
         rightButtons={rightButtons}
         loading={loading}
-        error={!video ? '视频不存在' : null}
+        error={!video ? t('common.videoMissing') : null}
         customVideo={customVideo}
       >
         {renderCustomContent()}

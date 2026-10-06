@@ -1,4 +1,5 @@
 import React, { useState, forwardRef, useImperativeHandle } from "react";
+import { useTranslation } from "react-i18next";
 import { apiService } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { showToast } from "../Toast/ToastContainer";
@@ -18,6 +19,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
   onUploadSuccess,
   onUploadError,
 }, ref) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -33,7 +35,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
 
     // 验证文件类型
     if (!file.type.startsWith("video/")) {
-      const errorMsg = "请选择有效的视频文件";
+      const errorMsg = t('upload.validVideo');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
@@ -42,7 +44,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
     // 验证文件大小 (限制为100MB)
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
-      const errorMsg = "文件大小不能超过100MB";
+      const errorMsg = t('upload.maxSize');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
@@ -56,7 +58,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
     if (!selectedFile) return;
 
     if (!title.trim()) {
-      showToast("请输入视频标题", "error");
+      showToast(t('common.enterVideoTitle'), "error");
       return;
     }
 
@@ -81,7 +83,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
         if (taskId) {
           // 有异步任务，显示全局成功提示
           showToast(
-            `视频 "${response.filename}" 上传成功！`,
+            t('upload.simpleSuccess', { filename: response.filename }),
             "success",
             3000
           );
@@ -89,18 +91,18 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
           onUploadSuccess?.(taskId, videoId);
         } else {
           // 没有task_id，使用旧的同步模式
-          showToast(`视频 "${response.filename}" 上传成功！`, "success", 2000);
+          showToast(t('upload.simpleSuccess', { filename: response.filename }), "success", 2000);
           
           onUploadSuccess?.(undefined, videoId);
         }
       } else {
-        const errorMsg = "上传失败，请重试";
+        const errorMsg = t('common.uploadFailed');
         showToast(errorMsg, "error");
         onUploadError?.(errorMsg);
       }
     } catch (err) {
       console.error("上传失败:", err);
-      const errorMsg = "上传失败，请检查网络连接";
+      const errorMsg = t('common.uploadNetworkFailed');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
     } finally {
@@ -145,18 +147,18 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
       {/* 上传表单弹窗 */}
       <UploadFormModal
         visible={showForm}
-        title="投稿"
+        title={t('upload.modalTitle')}
         fileName={selectedFile?.name}
         onClose={handleCancel}
       >
         <div className="form-group">
-          <label htmlFor="title">视频标题 *</label>
+          <label htmlFor="title">{t('common.videoTitle')}</label>
           <input
             id="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="请输入视频标题"
+            placeholder={t('common.enterVideoTitle')}
             required
           />
         </div>
@@ -167,7 +169,7 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
             onClick={handleCancel}
             disabled={uploading}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="submit-button"
@@ -177,12 +179,12 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
             {uploading ? (
               <>
                 <span className="upload-icon">⏳</span>
-                上传中...
+                {t('common.uploading')}
               </>
             ) : (
               <>
                 <span className="upload-icon">📤</span>
-                确认上传
+                {t('common.confirmUpload')}
               </>
             )}
           </button>
@@ -193,4 +195,3 @@ const UserVideoUpload = forwardRef<UserVideoUploadRef, UserVideoUploadProps>(({
 });
 
 export default UserVideoUpload;
-

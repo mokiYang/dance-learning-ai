@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getVideoUrl, getThumbnailUrl, apiService } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import './index.less';
@@ -35,6 +36,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   onDeleted,
   visibility,
 }) => {
+  const { t } = useTranslation();
   const { isAuthenticated, isAdmin } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [isLiked, setIsLiked] = useState(initialIsLiked);
@@ -103,11 +105,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
       if (result.success) {
         onDeleted?.();
       } else {
-        alert(result.error || '删除失败');
+        alert(result.error || t('videoCard.deleteFailed'));
       }
     } catch (error) {
       console.error('删除视频失败:', error);
-      alert('删除视频失败，请稍后重试');
+      alert(t('videoCard.deleteNetworkFailed'));
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -146,7 +148,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
           <div className="processing-overlay">
             <div className="processing-spinner"></div>
             <div className="processing-text">
-              正在提取骨骼数据...
+              {t('videoCard.extracting')}
               <br />
               <span className="processing-progress">{processingProgress}%</span>
             </div>
@@ -154,9 +156,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
         )}
         {/* 私密视频徽标：左下角 "仅自己可见" */}
         {visibility === 'private' && !isProcessing && (
-          <div className="visibility-badge" aria-label="仅自己可见">
+          <div className="visibility-badge" aria-label={t('videoCard.private')}>
             <span className="visibility-badge__icon" aria-hidden="true">🔒</span>
-            <span className="visibility-badge__text">仅自己可见</span>
+            <span className="visibility-badge__text">{t('videoCard.private')}</span>
           </div>
         )}
         {/* 管理员删除按钮 */}
@@ -164,7 +166,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
           <button
             className="admin-delete-btn"
             onClick={handleDeleteClick}
-            title="管理员删除视频"
+            title={t('videoCard.adminDelete')}
           >
             ✕
           </button>
@@ -173,22 +175,22 @@ const VideoCard: React.FC<VideoCardProps> = ({
         {showDeleteConfirm && (
           <div className="delete-confirm-overlay" onClick={handleCancelDelete}>
             <div className="delete-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-              <p>确定要删除这个视频吗？</p>
-              <p className="delete-confirm-hint">此操作不可恢复</p>
+              <p>{t('videoCard.deleteConfirm')}</p>
+              <p className="delete-confirm-hint">{t('videoCard.deleteHint')}</p>
               <div className="delete-confirm-actions">
                 <button
                   className="delete-confirm-cancel"
                   onClick={handleCancelDelete}
                   disabled={isDeleting}
                 >
-                  取消
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="delete-confirm-ok"
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
                 >
-                  {isDeleting ? '删除中...' : '确定删除'}
+                  {t(isDeleting ? 'videoCard.deleting' : 'videoCard.confirmDelete')}
                 </button>
               </div>
             </div>
@@ -208,7 +210,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
             className={`video-like-button ${isLiked ? 'liked' : ''}`}
             onClick={handleLikeClick}
             disabled={!isAuthenticated || isLiking}
-            title={isAuthenticated ? (isLiked ? '取消点赞' : '点赞') : '登录后可以点赞'}
+            title={t(isAuthenticated ? (isLiked ? 'videoCard.unlike' : 'videoCard.like') : 'videoCard.loginToLike')}
           >
             <span className="like-icon">{isLiked ? '❤️' : '🤍'}</span>
             <span className="like-count">{likeCount}</span>
@@ -220,4 +222,3 @@ const VideoCard: React.FC<VideoCardProps> = ({
 };
 
 export default VideoCard;
-

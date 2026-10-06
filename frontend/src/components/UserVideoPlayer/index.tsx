@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { apiService, getVideoUrl } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
@@ -16,6 +17,7 @@ interface UserVideo {
 }
 
 const UserVideoPlayer: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -31,7 +33,7 @@ const UserVideoPlayer: React.FC = () => {
   useEffect(() => {
     const fetchVideo = async () => {
       if (!id) {
-        setError('视频ID不能为空');
+        setError(t('common.videoIdRequired'));
         setLoading(false);
         return;
       }
@@ -51,13 +53,13 @@ const UserVideoPlayer: React.FC = () => {
               setCommentCount(commentsResponse.comments?.length || 0);
             }
           } else {
-            setError('未找到指定的视频');
+            setError(t('common.videoNotFound'));
           }
         } else {
-          setError('获取视频数据失败');
+          setError(t('common.videoDataFailed'));
         }
       } catch (err) {
-        setError('网络错误，请稍后重试');
+        setError(t('common.networkError'));
         console.error('获取视频数据失败:', err);
       } finally {
         setLoading(false);
@@ -65,7 +67,7 @@ const UserVideoPlayer: React.FC = () => {
     };
 
     fetchVideo();
-  }, [id]);
+  }, [id, i18n.resolvedLanguage]);
 
   const handleBackToList = () => {
     // 返回时带上 tab 参数，用户视频默认返回 user tab
@@ -93,7 +95,7 @@ const UserVideoPlayer: React.FC = () => {
       label: (
         <>
           <span className="comment-icon">💬</span>
-          <span className="comment-text">评论</span>
+          <span className="comment-text">{t('common.comments')}</span>
           {commentCount > 0 && (
             <span className="comment-count">{commentCount}</span>
           )}
@@ -127,7 +129,7 @@ const UserVideoPlayer: React.FC = () => {
         onBack={handleBackToList}
         rightButtons={rightButtons}
         loading={loading}
-        error={error || (!video ? '视频不存在' : null)}
+        error={error || (!video ? t('common.videoMissing') : null)}
         customVideo={customVideo}
       />
 
@@ -144,4 +146,3 @@ const UserVideoPlayer: React.FC = () => {
 };
 
 export default UserVideoPlayer;
-

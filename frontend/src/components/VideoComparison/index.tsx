@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiService, FrameComparisonResult, getVideoUrl } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
 import UploadFormModal from '../UploadFormModal';
@@ -11,6 +12,7 @@ interface VideoComparisonProps {
 }
 
 const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) => {
+  const { t, i18n } = useTranslation();
   const [frameData, setFrameData] = useState<FrameComparisonResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +68,12 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
           setLoading(false);
           setVideoLoading(false);
         } else {
-          setError('获取对比数据失败');
+          setError(t('comparison.fetchFailed'));
           setLoading(false);
           setVideoLoading(false);
         }
       } catch (err) {
-        setError('获取对比数据失败');
+        setError(t('comparison.fetchFailed'));
         console.error('获取对比数据失败:', err);
         setLoading(false);
         setVideoLoading(false);
@@ -79,7 +81,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
     };
 
     fetchFrameData();
-  }, [workId]);
+  }, [workId, i18n.resolvedLanguage]);
 
   // 同步视频播放（优化版本，避免干扰正常播放）
   useEffect(() => {
@@ -204,7 +206,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   if (loading) {
     return (
       <div className="video-comparison">
-        <div className="loading">加载中...</div>
+        <div className="loading">{t('common.loading')}</div>
       </div>
     );
   }
@@ -212,8 +214,8 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
   if (error || !frameData) {
     return (
       <div className="video-comparison">
-        <div className="error">{error || '数据加载失败'}</div>
-        <button onClick={onClose} className="close-btn">关闭</button>
+        <div className="error">{error || t('comparison.dataFailed')}</div>
+        <button onClick={onClose} className="close-btn">{t('common.close')}</button>
       </div>
     );
   }
@@ -230,7 +232,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
 
   const handleUploadSubmit = async () => {
     if (!videoTitle.trim()) {
-      showToast('请输入视频标题', 'error');
+      showToast(t('common.enterVideoTitle'), 'error');
       return;
     }
 
@@ -239,7 +241,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       const response = await apiService.uploadUserVideoFromWork(workId, videoTitle.trim());
       
       if (response.success) {
-        showToast('用户视频上传成功！视频已保存到您的视频列表', 'success', 3000);
+        showToast(t('upload.successSaved'), 'success', 3000);
         setShowUploadForm(false);
         setVideoTitle('');
         // 通知 PromotionBar 重新评估新手入门完成状态。
@@ -249,11 +251,11 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
         //    回到首页 mount 时会再拉一次状态作为兜底
         window.dispatchEvent(new CustomEvent('onboardingChanged'));
       } else {
-        showToast(`上传失败: 未知错误`, 'error');
+        showToast(t('comparison.uploadUnknown'), 'error');
       }
     } catch (err: any) {
       console.error('上传失败:', err);
-      showToast(`上传失败: ${err.message || '网络错误'}`, 'error');
+      showToast(t('comparison.uploadError', { message: err.message || t('common.networkError') }), 'error');
     } finally {
       setUploading(false);
     }
@@ -264,18 +266,18 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       {/* 上传表单弹窗 */}
       <UploadFormModal
         visible={showUploadForm}
-        title="投稿"
+        title={t('upload.modalTitle')}
         onClose={handleUploadCancel}
         showOverlay={true}
       >
         <div className="form-group">
-          <label htmlFor="video-title">视频标题 *</label>
+          <label htmlFor="video-title">{t('common.videoTitle')}</label>
           <input
             id="video-title"
             type="text"
             value={videoTitle}
             onChange={(e) => setVideoTitle(e.target.value)}
-            placeholder="请输入视频标题"
+            placeholder={t('common.enterVideoTitle')}
             required
             autoFocus
           />
@@ -287,7 +289,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
             onClick={handleUploadCancel}
             disabled={uploading}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="submit-button"
@@ -297,12 +299,12 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
             {uploading ? (
               <>
                 <span className="upload-icon">⏳</span>
-                上传中...
+                {t('common.uploading')}
               </>
             ) : (
               <>
                 <span className="upload-icon">📤</span>
-                确认上传
+                {t('common.confirmUpload')}
               </>
             )}
           </button>
@@ -310,15 +312,15 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       </UploadFormModal>
 
       <div className="comparison-header">
-        <h3>视频对比分析</h3>
+        <h3>{t('comparison.title')}</h3>
         <div className="header-actions">
           <button 
             onClick={handleUploadClick} 
             className="upload-user-video-btn"
           >
-            投稿
+            {t('common.submit')}
           </button>
-          <button onClick={onClose} className="close-btn">关闭</button>
+          <button onClick={onClose} className="close-btn">{t('common.close')}</button>
         </div>
       </div>
 
@@ -337,7 +339,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                   }
                 }}
               >
-                重试
+                {t('common.retry')}
               </button>
             </div>
           ) : (
@@ -359,19 +361,19 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                 }}
                 onError={(e) => {
                   const video = e.currentTarget;
-                  let errorMsg = '未知错误';
+                  let errorMsg = t('common.unknownError');
                   
                   if (video.error) {
                     const errorCode = video.error.code;
                     const errorMessages: { [key: number]: string } = {
-                      1: '视频加载被中止',
-                      2: '网络错误导致视频加载失败',
-                      3: '视频解码失败',
-                      4: '视频格式不支持或视频源无效'
+                      1: t('comparison.loadAborted'),
+                      2: t('comparison.loadNetwork'),
+                      3: t('comparison.decodeFailed'),
+                      4: t('comparison.sourceUnsupported')
                     };
-                    errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                    errorMsg = errorMessages[errorCode] || t('comparison.errorCode', { code: errorCode });
                     if (video.error.message) {
-                      errorMsg += `, 消息: ${video.error.message}`;
+                      errorMsg += `, ${t('comparison.errorMessage', { message: video.error.message })}`;
                     }
                   }
                   
@@ -383,8 +385,8 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                     readyState: video.readyState
                   });
                   
-                  setReferenceVideoError(`参考视频加载失败: ${errorMsg}。`);
-                  setError(`参考视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+                  setReferenceVideoError(t('comparison.referenceLoadFailed', { message: errorMsg }));
+                  setError(t('comparison.detailedLoadFailed', { type: t('comparison.referenceVideo'), message: errorMsg }));
                 }}
               />
               {referenceVideoId && (
@@ -413,7 +415,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                   }
                 }}
               >
-                重试
+                {t('common.retry')}
               </button>
             </div>
           ) : (
@@ -437,19 +439,19 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                 }}
                 onError={(e) => {
                   const video = e.currentTarget;
-                  let errorMsg = '未知错误';
+                  let errorMsg = t('common.unknownError');
                   
                   if (video.error) {
                     const errorCode = video.error.code;
                     const errorMessages: { [key: number]: string } = {
-                      1: '视频加载被中止',
-                      2: '网络错误导致视频加载失败',
-                      3: '视频解码失败',
-                      4: '视频格式不支持或视频源无效'
+                      1: t('comparison.loadAborted'),
+                      2: t('comparison.loadNetwork'),
+                      3: t('comparison.decodeFailed'),
+                      4: t('comparison.sourceUnsupported')
                     };
-                    errorMsg = errorMessages[errorCode] || `错误代码: ${errorCode}`;
+                    errorMsg = errorMessages[errorCode] || t('comparison.errorCode', { code: errorCode });
                     if (video.error.message) {
-                      errorMsg += `, 消息: ${video.error.message}`;
+                      errorMsg += `, ${t('comparison.errorMessage', { message: video.error.message })}`;
                     }
                   }
                   
@@ -461,7 +463,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                     readyState: video.readyState
                   });
                   
-                  setUserVideoError(`用户视频加载失败: ${errorMsg}。`);
+                  setUserVideoError(t('comparison.userLoadFailed', { message: errorMsg }));
                   
                   // 如果是格式不支持错误，尝试重新加载（最多重试1次，避免过多请求）
                   if (video.error?.code === 4 && retryCount < 1 && !userVideoLoaded) {
@@ -473,7 +475,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                       }
                     }, 3000);
                   } else {
-                    setError(`用户视频加载失败: ${errorMsg}。请检查视频文件是否存在且格式正确，或联系管理员。`);
+                    setError(t('comparison.detailedLoadFailed', { type: t('comparison.userVideo'), message: errorMsg }));
                   }
                 }}
               />
@@ -493,18 +495,18 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
       <div className="video-compare-controls">
         <div className="playback-controls">
           <button onClick={togglePlay} className="play-btn">
-            {isPlaying ? '暂停' : '播放'}
+            {t(isPlaying ? 'player.pause' : 'player.play')}
           </button>
 
           <button
             onClick={() => setShowPose(v => !v)}
             className={`pose-toggle-btn ${showPose ? 'active' : ''}`}
           >
-            {showPose ? '隐藏骨骼' : '显示骨骼'}
+            {t(showPose ? 'player.hidePose' : 'player.showPose')}
           </button>
           
           <div className="speed-controls">
-            <span>播放速度:</span>
+            <span>{t('comparison.speed')}</span>
             {[0.5, 0.75, 1].map(speed => (
               <button
                 key={speed}
@@ -520,8 +522,8 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
 
       <div className="timeline-container">
         <div className="timeline-header">
-          <span>时间轴对比</span>
-          <span>差异阈值: {frameData.threshold}</span>
+          <span>{t('comparison.timeline')}</span>
+          <span>{t('comparison.threshold', { value: frameData.threshold })}</span>
         </div>
         
         <div className="timeline" ref={timelineRef}>
@@ -530,23 +532,24 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
               key={index}
               className={`timeline-frame ${frame.has_difference ? 'has-difference' : ''} ${!frame.has_pose_data ? 'no-pose-data' : ''} ${frame.pose_quality_issue ? 'pose-quality-issue' : ''} ${index === currentFrame ? 'current' : ''}`}
               onClick={() => jumpToFrame(index)}
-              title={`帧 ${frame.frame_index}: ${
-                !frame.has_pose_data 
-                  ? '无骨骼数据' 
-                  : frame.pose_quality_issue 
-                    ? '骨骼提取质量差' 
-                    : `差异值 ${frame.difference.toFixed(3)}`
-              }`}
+              title={t('comparison.frameTitle', {
+                frame: frame.frame_index,
+                detail: !frame.has_pose_data
+                  ? t('comparison.noPose')
+                  : frame.pose_quality_issue
+                    ? t('comparison.poorPose')
+                    : t('comparison.difference', { value: frame.difference.toFixed(3) })
+              })}
             >
               <div className="frame-number">{frame.frame_index}</div>
               <div className="frame-time">{frame.timestamp.toFixed(1)}s</div>
               {!frame.has_pose_data ? (
                 <div className="no-pose-indicator">
-                  无数据
+                  {t('comparison.noData')}
                 </div>
               ) : frame.pose_quality_issue ? (
                 <div className="quality-issue-indicator">
-                  质量差
+                  {t('comparison.poorQuality')}
                 </div>
               ) : frame.has_difference ? (
                 <div className="difference-indicator">
@@ -562,13 +565,13 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
         <table className="stats-table">
           <tbody>
             <tr>
-              <td className="stat-label">总帧数:</td>
+              <td className="stat-label">{t('comparison.totalFrames')}</td>
               <td className="stat-value">{frameData.frame_comparisons.length}</td>
-              <td className="stat-label">差异帧数:</td>
+              <td className="stat-label">{t('comparison.differenceFrames')}</td>
               <td className="stat-value">{frameData.frame_comparisons.filter(f => f.has_difference).length}</td>
             </tr>
             <tr>
-              <td className="stat-label">同步率:</td>
+              <td className="stat-label">{t('comparison.syncRate')}</td>
               <td className="stat-value">
                 {(() => {
                   const validFrames = frameData.frame_comparisons.filter(f => f.has_pose_data && !f.pose_quality_issue);
@@ -577,7 +580,7 @@ const VideoComparison: React.FC<VideoComparisonProps> = ({ workId, onClose }) =>
                   return ((syncFrames / validFrames.length) * 100).toFixed(1) + '%';
                 })()}
               </td>
-              <td className="stat-label">数据质量:</td>
+              <td className="stat-label">{t('comparison.dataQuality')}</td>
               <td className="stat-value">
                 {(() => {
                   const totalFrames = frameData.frame_comparisons.length;

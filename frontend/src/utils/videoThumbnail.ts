@@ -1,3 +1,5 @@
+import i18n from '../i18n';
+
 /**
  * 视频缩略图工具函数
  * 用于从视频Blob或视频元素中提取第一帧作为封面
@@ -38,7 +40,7 @@ export async function extractThumbnailFromBlob(videoBlob: Blob): Promise<string 
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             URL.revokeObjectURL(videoUrl);
-            reject(new Error('无法创建Canvas上下文'));
+            reject(new Error(i18n.t('errors.canvasUnavailable')));
             return;
           }
           
@@ -61,7 +63,7 @@ export async function extractThumbnailFromBlob(videoBlob: Blob): Promise<string 
       // 错误处理
       video.addEventListener('error', (e) => {
         URL.revokeObjectURL(videoUrl);
-        reject(new Error('视频加载失败'));
+        reject(new Error(i18n.t('errors.thumbnailLoadFailed')));
       });
       
       // 如果视频已经加载完成，直接触发seeked事件
@@ -91,7 +93,7 @@ export async function extractThumbnailFromVideoElement(
       
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        reject(new Error('无法创建Canvas上下文'));
+        reject(new Error(i18n.t('errors.canvasUnavailable')));
         return;
       }
       
@@ -107,4 +109,3 @@ export async function extractThumbnailFromVideoElement(
     }
   });
 }
-

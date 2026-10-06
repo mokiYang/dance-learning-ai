@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import './index.less';
 
 export interface ControlButton {
@@ -34,13 +35,14 @@ const BaseVideoPlayer: React.FC<BaseVideoPlayerProps> = ({
   videoProps = {},
   customVideo,
 }) => {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   if (loading) {
     return (
       <div className="video-player-container">
         <div className="loading-container">
-          <div className="loading-spinner">加载中...</div>
+          <div className="loading-spinner">{t('common.loading')}</div>
         </div>
       </div>
     );
@@ -52,7 +54,7 @@ const BaseVideoPlayer: React.FC<BaseVideoPlayerProps> = ({
         <div className="error-container">
           <div className="error-message">{error}</div>
           <button className="btn btn-primary" onClick={onBack}>
-            返回
+            {t('common.back')}
           </button>
         </div>
       </div>
@@ -109,4 +111,3 @@ const BaseVideoPlayer: React.FC<BaseVideoPlayerProps> = ({
 };
 
 export default BaseVideoPlayer;
-

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { apiService, ReferenceVideo, ComparisonResult } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
 import BaseVideoPlayer, { ControlButton } from '../BaseVideoPlayer';
@@ -8,6 +9,7 @@ import { extractThumbnailFromBlob } from '../../utils/videoThumbnail';
 import './index.less';
 
 const VideoResult: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,7 +28,7 @@ const VideoResult: React.FC = () => {
   // const [showVideoComparison, setShowVideoComparison] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState<string>('');
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [videoTitle, setVideoTitle] = useState('');
   const [videoPoster, setVideoPoster] = useState<string | undefined>(undefined);
@@ -67,7 +69,7 @@ const VideoResult: React.FC = () => {
   useEffect(() => {
     const fetchVideo = async () => {
       if (!id) {
-        showToast('视频ID不能为空', 'error');
+        showToast(t('common.videoIdRequired'), 'error');
         setLoading(false);
         return;
       }
@@ -81,13 +83,13 @@ const VideoResult: React.FC = () => {
           if (foundVideo) {
             setVideo(foundVideo);
           } else {
-            showToast('未找到指定的视频', 'error');
+            showToast(t('common.videoNotFound'), 'error');
           }
         } else {
-          showToast('获取视频数据失败', 'error');
+          showToast(t('common.videoDataFailed'), 'error');
         }
       } catch (err) {
-        showToast('网络错误，请稍后重试', 'error');
+        showToast(t('common.networkError'), 'error');
         console.error('获取视频数据失败:', err);
       } finally {
         setLoading(false);
@@ -95,7 +97,7 @@ const VideoResult: React.FC = () => {
     };
 
     fetchVideo();
-  }, [id]);
+  }, [id, i18n.resolvedLanguage]);
 
   // 组件卸载时清理轮询定时器
   useEffect(() => {
@@ -122,31 +124,31 @@ const VideoResult: React.FC = () => {
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      showToast('请先选择要上传的视频文件', 'error');
+      showToast(t('result.selectVideoFirst'), 'error');
       return;
     }
 
     if (!video) {
-      showToast('参考视频信息不存在', 'error');
+      showToast(t('result.referenceMissing'), 'error');
       return;
     }
 
     try {
       setUploading(true);
-      setExtractionProgress('正在上传视频...');
+      setExtractionProgress(t('result.uploadingVideo'));
 
       // 第一步：上传用户视频（后台异步提取骨骼数据）
       const uploadResult = await apiService.uploadUserVideo(selectedFile, video.video_id);
       
       if (!uploadResult.success) {
-        throw new Error(uploadResult.message || '上传失败');
+        throw new Error(uploadResult.message || t('common.uploadFailed'));
       }
 
       console.log('用户视频上传成功:', uploadResult);
 
       // 如果骨骼数据尚未提取完成，启动轮询
       if (!uploadResult.pose_data_extracted) {
-        setExtractionProgress('正在提取骨骼数据（0%）...');
+        setExtractionProgress(t('result.extracting', { progress: 0 }));
         
         try {
           // 轮询用户视频状态（无超时限制）
@@ -154,9 +156,9 @@ const VideoResult: React.FC = () => {
             uploadResult.user_video_id,
             (progress, extracted) => {
               if (extracted) {
-                setExtractionProgress('骨骼数据提取完成');
+                setExtractionProgress(t('result.extracted'));
               } else {
-                setExtractionProgress(`正在提取骨骼数据（${progress}%）...`);
+                setExtractionProgress(t('result.extracting', { progress }));
               }
             },
             2000  // 每2秒轮询一次
@@ -168,7 +170,7 @@ const VideoResult: React.FC = () => {
           if (!pollResult.success) {
             console.log('骨骼提取失败，显示错误:', pollResult.error);
             console.error('=== 准备显示Toast错误 ===');
-            showToast(pollResult.error || '骨骼数据提取失败', 'error', 6000);
+            showToast(pollResult.error || t('result.extractionFailed'), 'error', 6000);
             setUploading(false);
             setExtractionProgress('');
             return;
@@ -177,7 +179,7 @@ const VideoResult: React.FC = () => {
           console.log('用户视频骨骼数据提取完成');
         } catch (pollError) {
           console.error('骨骼数据提取出错:', pollError);
-          showToast('网络错误，请重试', 'error');
+          showToast(t('common.networkRetry'), 'error');
           setUploading(false);
           setExtractionProgress('');
           return;
@@ -185,7 +187,7 @@ const VideoResult: React.FC = () => {
       }
 
       // 第二步：进行对比分析
-      setExtractionProgress('正在进行动作对比分析...');
+      setExtractionProgress(t('result.comparing'));
       
       try {
         const comparisonResult = await apiService.compareWithUploadedVideo(
@@ -199,7 +201,7 @@ const VideoResult: React.FC = () => {
           const userPoseFrames = comparisonResult.video_info?.user?.pose_frames || 0;
           
           if (userPoseFrames === 0) {
-            showToast('视频中未检测到人像，无法进行动作分析。请确保视频中有完整的人体姿态。', 'error', 5000);
+            showToast(t('result.noPersonEnsure'), 'error', 5000);
             setUploading(false);
             setExtractionProgress('');
             return;
@@ -211,20 +213,20 @@ const VideoResult: React.FC = () => {
           // 直接跳转到对比页的独立路由
           navigate(`/comparison/${comparisonResult.work_id}?videoId=${id}`);
         } else {
-          showToast('视频分析失败，请重试', 'error');
+          showToast(t('result.analysisFailed'), 'error');
         }
       } catch (compareError: any) {
         console.error('对比分析失败:', compareError);
         // 检查是否是骨骼数据相关的错误
         const errorMsg = compareError?.message || String(compareError);
         if (errorMsg.includes('骨骼数据不存在') || errorMsg.includes('pose_data')) {
-          showToast('视频中未检测到人像，无法进行动作分析。请上传包含完整人体姿态的舞蹈视频。', 'error', 5000);
+          showToast(t('result.noPersonUpload'), 'error', 5000);
         } else {
-          showToast('视频分析失败：' + errorMsg, 'error');
+          showToast(t('result.analysisFailedWithReason', { message: errorMsg }), 'error');
         }
       }
     } catch (err) {
-      showToast('上传失败，请检查网络连接', 'error');
+      showToast(t('common.uploadNetworkFailed'), 'error');
       console.error('上传失败:', err);
     } finally {
       setUploading(false);
@@ -234,7 +236,7 @@ const VideoResult: React.FC = () => {
 
   const handleUploadVideoClick = () => {
     if (!selectedFile) {
-      showToast('请先选择要上传的视频文件', 'error');
+      showToast(t('result.selectVideoFirst'), 'error');
       return;
     }
     setShowUploadForm(true);
@@ -250,7 +252,7 @@ const VideoResult: React.FC = () => {
     if (!selectedFile) return;
     
     if (!videoTitle.trim()) {
-      showToast('请输入视频标题', 'error');
+      showToast(t('common.enterVideoTitle'), 'error');
       return;
     }
 
@@ -264,16 +266,16 @@ const VideoResult: React.FC = () => {
       );
 
       if (response.success) {
-        showToast('用户视频上传成功！视频已保存到您的视频列表', 'success', 3000);
+        showToast(t('upload.successSaved'), 'success', 3000);
         setShowUploadForm(false);
         setVideoTitle('');
         // 可以跳转到视频列表页面
         navigate('/?tab=user');
       } else {
-        showToast('视频上传失败，请重试', 'error');
+        showToast(t('result.permanentUploadFailed'), 'error');
       }
     } catch (err) {
-      showToast('上传失败，请检查网络连接', 'error');
+      showToast(t('common.uploadNetworkFailed'), 'error');
       console.error('上传失败:', err);
     } finally {
       setUploading(false);
@@ -284,21 +286,21 @@ const VideoResult: React.FC = () => {
     if (!selectedFile || !video) return;
     
     setIsAnalyzing(true);
-    setExtractionProgress('正在上传视频...');
+    setExtractionProgress(t('result.uploadingVideo'));
 
     try {
       // 第一步：上传用户视频（后台异步提取骨骼数据）
       const uploadResult = await apiService.uploadUserVideo(selectedFile, video.video_id);
       
       if (!uploadResult.success) {
-        throw new Error(uploadResult.message || '上传失败');
+        throw new Error(uploadResult.message || t('common.uploadFailed'));
       }
 
       console.log('用户视频上传成功:', uploadResult);
 
       // 如果骨骼数据尚未提取完成，启动轮询
       if (!uploadResult.pose_data_extracted) {
-        setExtractionProgress('正在提取骨骼数据（0%）...');
+        setExtractionProgress(t('result.extracting', { progress: 0 }));
         
         try {
           // 轮询用户视频状态（无超时限制）
@@ -306,9 +308,9 @@ const VideoResult: React.FC = () => {
             uploadResult.user_video_id,
             (progress, extracted) => {
               if (extracted) {
-                setExtractionProgress('骨骼数据提取完成');
+                setExtractionProgress(t('result.extracted'));
               } else {
-                setExtractionProgress(`正在提取骨骼数据（${progress}%）...`);
+                setExtractionProgress(t('result.extracting', { progress }));
               }
             },
             2000  // 每2秒轮询一次
@@ -320,7 +322,7 @@ const VideoResult: React.FC = () => {
           if (!pollResult.success) {
             console.log('骨骼提取失败，显示错误:', pollResult.error);
             console.error('=== 准备显示Toast错误 ===');
-            showToast(pollResult.error || '骨骼数据提取失败', 'error', 6000);
+            showToast(pollResult.error || t('result.extractionFailed'), 'error', 6000);
             setIsAnalyzing(false);
             return;
           }
@@ -328,14 +330,14 @@ const VideoResult: React.FC = () => {
           console.log('用户视频骨骼数据提取完成');
         } catch (pollError) {
           console.error('骨骼数据提取出错:', pollError);
-          showToast('网络错误，请重试', 'error');
+          showToast(t('common.networkRetry'), 'error');
           setIsAnalyzing(false);
           return;
         }
       }
 
       // 第二步：进行分析
-      setExtractionProgress('正在进行动作对比分析...');
+      setExtractionProgress(t('result.comparing'));
       
       try {
         const comparisonResult = await apiService.compareWithUploadedVideo(
@@ -349,7 +351,7 @@ const VideoResult: React.FC = () => {
           const userPoseFrames = comparisonResult.video_info?.user?.pose_frames || 0;
           
           if (userPoseFrames === 0) {
-            showToast('视频中未检测到人像，无法进行动作分析。请确保视频中有完整的人体姿态。', 'error', 5000);
+            showToast(t('result.noPersonEnsure'), 'error', 5000);
             setIsAnalyzing(false);
             setExtractionProgress('');
             return;
@@ -361,20 +363,20 @@ const VideoResult: React.FC = () => {
           // 直接跳转到对比页的独立路由，传递视频ID以便返回时使用
           navigate(`/comparison/${comparisonResult.work_id}?videoId=${id}`);
         } else {
-          showToast('视频分析失败，请重试', 'error');
+          showToast(t('result.analysisFailed'), 'error');
         }
       } catch (compareError: any) {
         console.error('对比分析失败:', compareError);
         // 检查是否是骨骼数据相关的错误
         const errorMsg = compareError?.message || String(compareError);
         if (errorMsg.includes('骨骼数据不存在') || errorMsg.includes('pose_data')) {
-          showToast('视频中未检测到人像，无法进行动作分析。请上传包含完整人体姿态的舞蹈视频。', 'error', 5000);
+          showToast(t('result.noPersonUpload'), 'error', 5000);
         } else {
-          showToast('视频分析失败：' + errorMsg, 'error');
+          showToast(t('result.analysisFailedWithReason', { message: errorMsg }), 'error');
         }
       }
     } catch (err) {
-      showToast('分析失败，请检查网络连接', 'error');
+      showToast(t('result.connectionAnalysisFailed'), 'error');
       console.error('分析失败:', err);
     } finally {
       setIsAnalyzing(false);
@@ -396,14 +398,14 @@ const VideoResult: React.FC = () => {
   if (hasRecordedVideo) {
     rightButtons.push(
       {
-        label: '投稿',
+        label: t('common.submit'),
         className: 'btn-success',
         onClick: handleUploadVideoClick,
         disabled: uploading || isAnalyzing,
         visible: true,
       },
       {
-        label: '分析视频质量',
+        label: t('result.analyzeQuality'),
         className: 'btn-warning',
         onClick: handleAnalyzeQuality,
         disabled: uploading || isAnalyzing,
@@ -419,9 +421,9 @@ const VideoResult: React.FC = () => {
     } else if (isAnalyzing) {
       return (
         <div className="analyzing-status">
-          <h3>正在分析视频质量</h3>
-          <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
-          <p>请稍候，正在分析您的舞蹈动作...</p>
+          <h3>{t('result.analyzingQuality')}</h3>
+          <div className="loading-spinner">{extractionProgress || t('common.processing')}</div>
+          <p>{t('result.analyzingHint')}</p>
         </div>
       );
     } else {
@@ -440,13 +442,13 @@ const VideoResult: React.FC = () => {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
           >
-            选择视频文件
+            {t('result.chooseFile')}
           </button>
 
           {selectedFile && (
             <div className="selected-file">
-              <p>已选择文件: {selectedFile.name}</p>
-              <p>文件大小: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+              <p>{t('common.selectedFile', { name: selectedFile.name })}</p>
+              <p>{t('common.fileSize', { size: (selectedFile.size / 1024 / 1024).toFixed(2) })}</p>
               
               <video
                 className="preview-video"
@@ -463,7 +465,7 @@ const VideoResult: React.FC = () => {
                   onClick={handleUpload}
                   disabled={uploading}
                 >
-                  {uploading ? '分析中...' : '开始分析'}
+                  {t(uploading ? 'result.analyzing' : 'result.startAnalysis')}
                 </button>
               </div>
             </div>
@@ -471,7 +473,7 @@ const VideoResult: React.FC = () => {
 
           {uploading && (
             <div className="uploading-status">
-              <div className="loading-spinner">{extractionProgress || '上传中...'}</div>
+              <div className="loading-spinner">{extractionProgress || t('common.uploading')}</div>
             </div>
           )}
         </div>
@@ -488,7 +490,7 @@ const VideoResult: React.FC = () => {
           onBack={handleBackToPlayer}
           rightButtons={rightButtons}
           loading={loading}
-          error={!video ? '视频不存在' : null}
+          error={!video ? t('common.videoMissing') : null}
           videoProps={{
             muted: true,
             autoPlay: true,
@@ -514,18 +516,18 @@ const VideoResult: React.FC = () => {
       {/* 上传表单弹窗 */}
       <UploadFormModal
         visible={showUploadForm}
-        title="上传用户视频"
+        title={t('upload.userTitle')}
         onClose={handleUploadCancel}
         showOverlay={true}
       >
         <div className="form-group">
-          <label htmlFor="video-title">视频标题 *</label>
+          <label htmlFor="video-title">{t('common.videoTitle')}</label>
           <input
             id="video-title"
             type="text"
             value={videoTitle}
             onChange={(e) => setVideoTitle(e.target.value)}
-            placeholder="请输入视频标题"
+            placeholder={t('common.enterVideoTitle')}
             required
             autoFocus
           />
@@ -537,7 +539,7 @@ const VideoResult: React.FC = () => {
             onClick={handleUploadCancel}
             disabled={uploading}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="submit-button"
@@ -547,12 +549,12 @@ const VideoResult: React.FC = () => {
             {uploading ? (
               <>
                 <span className="upload-icon">⏳</span>
-                上传中...
+                {t('common.uploading')}
               </>
             ) : (
               <>
                 <span className="upload-icon">📤</span>
-                确认上传
+                {t('common.confirmUpload')}
               </>
             )}
           </button>
@@ -563,9 +565,9 @@ const VideoResult: React.FC = () => {
       {isAnalyzing && (
         <div className="loading-overlay">
           <div className="loading-content">
-            <h3>正在分析视频质量</h3>
-            <div className="loading-spinner">{extractionProgress || '处理中...'}</div>
-            <p>请稍候，正在分析您的舞蹈动作...</p>
+            <h3>{t('result.analyzingQuality')}</h3>
+            <div className="loading-spinner">{extractionProgress || t('common.processing')}</div>
+            <p>{t('result.analyzingHint')}</p>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
@@ -18,8 +19,6 @@ import './index.less';
 
 // 当前运营策略：引导用户先录制新手入门视频
 const PROMOTION_CONFIG = {
-  text: '🌟 新手入门指引：跟着这些视频录制你的第一个作品',
-  cta: '去看看',
   targetPath: '/beginner',
   // 关闭状态的 localStorage key 前缀
   storageKeyPrefix: 'dance_promo_dismissed:beginner:v1',
@@ -35,6 +34,7 @@ interface PromotionBarProps {
 type Visibility = 'loading' | 'visible' | 'hidden';
 
 const PromotionBar: React.FC<PromotionBarProps> = ({ className = '' }) => {
+  const { t } = useTranslation();
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [visibility, setVisibility] = useState<Visibility>('loading');
@@ -120,9 +120,9 @@ const PromotionBar: React.FC<PromotionBarProps> = ({ className = '' }) => {
       }}
     >
       <div className="promotion-bar__content">
-        <span className="promotion-bar__text">{PROMOTION_CONFIG.text}</span>
+        <span className="promotion-bar__text">{t('promotion.text')}</span>
         <span className="promotion-bar__cta">
-          {PROMOTION_CONFIG.cta}
+          {t('promotion.cta')}
           <span className="promotion-bar__arrow">→</span>
         </span>
       </div>
@@ -130,7 +130,7 @@ const PromotionBar: React.FC<PromotionBarProps> = ({ className = '' }) => {
         type="button"
         className="promotion-bar__close"
         onClick={handleDismiss}
-        aria-label="关闭提示"
+        aria-label={t('promotion.close')}
       >
         ×
       </button>
@@ -139,4 +139,3 @@ const PromotionBar: React.FC<PromotionBarProps> = ({ className = '' }) => {
 };
 
 export default PromotionBar;
-

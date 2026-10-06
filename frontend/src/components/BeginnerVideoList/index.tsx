@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiService, ReferenceVideo } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
@@ -17,6 +18,7 @@ import "./index.less";
  *  - 列表项点击进入 /video/:id 后续录制同款、对比姿势等流程完全复用现有逻辑
  */
 const BeginnerVideoList: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [videos, setVideos] = useState<ReferenceVideo[]>([]);
@@ -26,7 +28,7 @@ const BeginnerVideoList: React.FC = () => {
 
   // 正在处理的视频任务（与 VideoList 保持一致的进度展示能力）
   const [processingTasks, setProcessingTasks] = useState<Map<string, { taskId: string; progress: number }>>(new Map());
-  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pollingIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
   useEffect(() => {
     fetchVideos();
@@ -34,7 +36,7 @@ const BeginnerVideoList: React.FC = () => {
     // 监听全局上传触发事件（来自底部 TabBar 的 + 按钮）
     const handleUploadTrigger = () => {
       if (!isAdmin) {
-        showToast("只有管理员可以上传新手入门教学视频", "error");
+        showToast(t('beginner.adminOnly'), "error");
         return;
       }
       uploadRef.current?.handleFileUploadClick();
@@ -47,7 +49,7 @@ const BeginnerVideoList: React.FC = () => {
       pollingIntervalsRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  }, [isAdmin, i18n.resolvedLanguage]);
 
   const fetchVideos = async () => {
     try {
@@ -57,10 +59,10 @@ const BeginnerVideoList: React.FC = () => {
       if (response.success) {
         setVideos(response.videos || []);
       } else {
-        setError("获取新手入门视频列表失败");
+        setError(t('beginner.fetchFailed'));
       }
     } catch (err) {
-      setError("网络错误，请稍后重试");
+      setError(t('common.networkError'));
       console.error("获取新手入门视频列表失败:", err);
     } finally {
       setLoading(false);
@@ -80,7 +82,7 @@ const BeginnerVideoList: React.FC = () => {
   };
 
   const handleVideoDeleted = () => {
-    showToast('视频已删除', 'success');
+    showToast(t('list.deleted'), 'success');
     fetchVideos();
   };
 
@@ -89,7 +91,7 @@ const BeginnerVideoList: React.FC = () => {
     const pollInterval = setInterval(async () => {
       try {
         const result = await apiService.getTaskStatus(taskId);
-        if (!result.success) throw new Error('获取任务状态失败');
+        if (!result.success) throw new Error(t('list.taskStatusFailed'));
         const { task } = result;
         setProcessingTasks(prev => {
           const newMap = new Map(prev);
@@ -137,12 +139,12 @@ const BeginnerVideoList: React.FC = () => {
           type="button"
           className="beginner-header__back"
           onClick={() => navigate('/')}
-          aria-label="返回首页"
+          aria-label={t('app.returnHome')}
         >
           <span className="back-icon">←</span>
-          <span className="back-text">返回首页</span>
+          <span className="back-text">{t('app.returnHome')}</span>
         </button>
-        <h1 className="beginner-header__title">新手入门教学视频</h1>
+        <h1 className="beginner-header__title">{t('beginner.title')}</h1>
         {/* 占位让标题视觉居中（与返回按钮等宽） */}
         <div className="beginner-header__placeholder" aria-hidden="true" />
       </div>
@@ -150,18 +152,18 @@ const BeginnerVideoList: React.FC = () => {
       {/* 视频网格 - 复用首页 VideoCard，与首页保持视觉一致 */}
       {loading ? (
         <div className="loading-container">
-          <div className="loading-spinner">加载中...</div>
+          <div className="loading-spinner">{t('common.loading')}</div>
         </div>
       ) : error ? (
         <div className="error-container">
           <div className="error-message">{error}</div>
-          <button onClick={() => fetchVideos()}>重试</button>
+          <button onClick={() => fetchVideos()}>{t('common.retry')}</button>
         </div>
       ) : (
         <div className="beginner-video-grid">
           {videos.length === 0 ? (
             <div className="empty-state">
-              <p>{isAdmin ? "暂无新手入门视频，点击底部 + 上传第一个吧！" : "暂无新手入门视频，敬请期待"}</p>
+              <p>{t(isAdmin ? 'beginner.emptyAdmin' : 'beginner.empty')}</p>
             </div>
           ) : (
             videos.map((video) => {

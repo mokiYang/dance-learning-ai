@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import Login from '../Login';
@@ -10,6 +11,7 @@ import './index.less';
 type MainTab = 'user' | 'reference';
 
 const Profile: React.FC = () => {
+  const { t } = useTranslation();
   const { user, isAuthenticated, logout, isLoading } = useAuth();
   const navigate = useNavigate();
   // 用户视频：公开 + 私密混排在同一个网格中，私密视频通过 VideoCard 的徽标区分
@@ -57,7 +59,7 @@ const Profile: React.FC = () => {
   if (isLoading) {
     return (
       <div className="profile-container">
-        <div className="loading">加载中...</div>
+        <div className="loading">{t('common.loading')}</div>
       </div>
     );
   }
@@ -67,7 +69,7 @@ const Profile: React.FC = () => {
   }
 
   const handleLogout = () => {
-    if (window.confirm('确定要退出登录吗？')) {
+    if (window.confirm(t('profile.logoutConfirm'))) {
       logout();
     }
   };
@@ -89,7 +91,7 @@ const Profile: React.FC = () => {
       <div className="profile-header">
         <div className="avatar">
           {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="头像" />
+            <img src={user.avatar_url} alt={t('profile.avatar')} />
           ) : (
             <div className="avatar-placeholder">
               {user?.username.charAt(0).toUpperCase()}
@@ -98,8 +100,8 @@ const Profile: React.FC = () => {
         </div>
         <div className="user-info">
           <h2 className="username">{user?.username}</h2>
-          <button className="btn-logout-header" onClick={handleLogout} title="退出登录">
-            退出登录
+          <button className="btn-logout-header" onClick={handleLogout} title={t('profile.logout')}>
+            {t('profile.logout')}
           </button>
           {user?.email && <p className="email">{user.email}</p>}
         </div>
@@ -110,8 +112,8 @@ const Profile: React.FC = () => {
         <div className="video-tabs-wrapper">
           <Tabs
             items={[
-              { key: 'user', label: '用户视频' },
-              { key: 'reference', label: '教学视频' }
+              { key: 'user', label: t('profile.userVideos') },
+              { key: 'reference', label: t('profile.teachingVideos') }
             ]}
             activeKey={activeTab}
             onChange={(key) => handleTabChange(key as MainTab)}
@@ -120,12 +122,12 @@ const Profile: React.FC = () => {
 
         {/* 视频网格 */}
         {videosLoading ? (
-          <div className="videos-loading">加载中...</div>
+          <div className="videos-loading">{t('common.loading')}</div>
         ) : activeTab === 'user' ? (
           userVideos.length === 0 ? (
             <div className="videos-empty">
-              <p>还没有发布过用户视频</p>
-              <p className="empty-hint">跟着教学视频录制，保存后会出现在这里</p>
+              <p>{t('profile.noUserVideos')}</p>
+              <p className="empty-hint">{t('profile.userHint')}</p>
             </div>
           ) : (
             <div className="profile-videos-grid">
@@ -145,8 +147,8 @@ const Profile: React.FC = () => {
         ) : (
           referenceVideos.length === 0 ? (
             <div className="videos-empty">
-              <p>还没有发布过教学视频</p>
-              <p className="empty-hint">快去上传你的第一个教学视频吧！</p>
+              <p>{t('profile.noTeachingVideos')}</p>
+              <p className="empty-hint">{t('profile.teachingHint')}</p>
             </div>
           ) : (
             <div className="profile-videos-grid">
@@ -170,5 +172,4 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
-
 

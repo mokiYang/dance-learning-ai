@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import './index.less';
 
 const GUIDE_STORAGE_KEY = 'danceaura_has_guide';
@@ -20,6 +21,7 @@ const rememberGuide = () => {
 };
 
 const UserGuide: React.FC = () => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(() => !hasSeenGuide());
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -52,10 +54,10 @@ const UserGuide: React.FC = () => {
         className="user-guide-trigger"
         type="button"
         onClick={() => setIsOpen(true)}
-        aria-label="打开新手使用指南"
+        aria-label={t('guide.open')}
       >
         <span aria-hidden="true">?</span>
-        <span className="user-guide-trigger__text">新手指南</span>
+        <span className="user-guide-trigger__text">{t('guide.label')}</span>
       </button>
 
       {isOpen && (
@@ -78,41 +80,41 @@ const UserGuide: React.FC = () => {
               className="user-guide-close"
               type="button"
               onClick={closeGuide}
-              aria-label="关闭新手指南"
+              aria-label={t('guide.close')}
             >
               ×
             </button>
 
             <div className="user-guide-heading-icon" aria-hidden="true">✨</div>
             <h2 id="user-guide-title" className="user-guide-title">
-              Hello！这里助力你的舞蹈梦想
+              {t('guide.title')}
             </h2>
             <p id="user-guide-subtitle" className="user-guide-subtitle">
-              快来解锁超有趣的使用小 Tips
+              {t('guide.subtitle')}
             </p>
 
             <div className="user-guide-steps">
               <div className="user-guide-step">
                 <span aria-hidden="true">01</span>
-                <p>初次到访，记得先完成页面顶部的新手入门教程，快速熟悉平台！</p>
+                <p>{t('guide.step1')}</p>
               </div>
               <div className="user-guide-step">
                 <span aria-hidden="true">02</span>
-                <p>首页有丰富的舞蹈教学视频。选择喜欢的片段录制，AI 伙伴会给你专属改进建议。</p>
+                <p>{t('guide.step2')}</p>
               </div>
               <div className="user-guide-step">
                 <span aria-hidden="true">03</span>
-                <p>点击页面底部的加号，上传想跟拍的舞蹈视频，也可以大胆分享自己的风采。</p>
+                <p>{t('guide.step3')}</p>
               </div>
               <div className="user-guide-step">
                 <span aria-hidden="true">04</span>
-                <p>看到其他舞友的精彩作品，别忘了点赞、留言，送上一份暖心鼓励。</p>
+                <p>{t('guide.step4')}</p>
               </div>
             </div>
 
-            <p className="user-guide-ending">准备好了吗？开启你的舞蹈成长之旅吧！</p>
+            <p className="user-guide-ending">{t('guide.ending')}</p>
             <button className="user-guide-confirm" type="button" onClick={closeGuide}>
-              立刻开启
+              {t('guide.start')}
             </button>
           </section>
         </div>

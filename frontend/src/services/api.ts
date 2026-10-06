@@ -1,3 +1,5 @@
+import i18n from '../i18n';
+
 /**
  * API 配置和服务
  * 统一管理所有 API 相关的 URL 配置和请求方法
@@ -373,7 +375,7 @@ class ApiService {
         console.log('轮询状态:', result);
         
         if (!result.success) {
-          return { success: false, error: '获取视频状态失败' };
+          return { success: false, error: i18n.t('errors.videoStatusFailed') };
         }
         
         // 调用进度回调
@@ -395,7 +397,7 @@ class ApiService {
         
       } catch (error) {
         console.error('轮询用户视频状态出错:', error);
-        return { success: false, error: '网络错误，请重试' };
+        return { success: false, error: i18n.t('common.networkRetry') };
       }
     }
   }
@@ -410,7 +412,7 @@ class ApiService {
   async getPoseVideo(workId: string, videoType: 'reference' | 'user'): Promise<Blob> {
     const response = await fetch(`${SERVER_BASE_URL}/api/pose-video/${workId}/${videoType}`);
     if (!response.ok) {
-      throw new Error(`获取视频失败: ${response.statusText}`);
+      throw new Error(i18n.t('errors.fetchVideoFailed', { message: response.statusText }));
     }
     return response.blob();
   }
@@ -463,7 +465,7 @@ class ApiService {
         const result = await this.getTaskStatus(taskId);
         
         if (!result.success) {
-          throw new Error('获取任务状态失败');
+          throw new Error(i18n.t('list.taskStatusFailed'));
         }
         
         const { task } = result;
@@ -480,7 +482,7 @@ class ApiService {
         
         // 任务失败
         if (task.status === 'failed') {
-          throw new Error(task.error_message || '任务处理失败');
+          throw new Error(task.error_message || i18n.t('errors.taskFailed'));
         }
         
         // 等待一段时间后继续轮询
@@ -492,7 +494,7 @@ class ApiService {
       }
     }
     
-    throw new Error('任务处理超时');
+    throw new Error(i18n.t('errors.taskTimeout'));
   }
 
   // ==================== 认证相关 API ====================

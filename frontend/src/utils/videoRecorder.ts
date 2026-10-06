@@ -1,3 +1,5 @@
+import i18n from '../i18n';
+
 export class VideoRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
@@ -31,7 +33,7 @@ export class VideoRecorder {
         return type;
       }
     }
-    throw new Error('浏览器不支持任何可用的录制格式');
+    throw new Error(i18n.t('errors.unsupportedRecording'));
   }
 
   public async startRecording(): Promise<void> {
@@ -101,7 +103,7 @@ export class VideoRecorder {
       this.canvasContext = this.canvas.getContext('2d');
       
       if (!this.canvasContext) {
-        throw new Error('无法创建 Canvas 上下文');
+        throw new Error(i18n.t('errors.canvasUnavailable'));
       }
       
       // 开始绘制循环
@@ -177,7 +179,7 @@ export class VideoRecorder {
   public stopRecording(): Promise<Blob> {
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder) {
-        reject(new Error('录制器未初始化'));
+        reject(new Error(i18n.t('errors.recorderUnavailable')));
         return;
       }
 
@@ -279,4 +281,4 @@ export class VideoRecorder {
     this.canvasContext = null;
     this.sourceVideoElement = null;
   }
-} 
+}

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiService, TOKEN_KEY, USER_KEY } from '../services/api';
 
 // 用户信息类型
@@ -28,6 +29,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,11 +65,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));
         return { success: true };
       } else {
-        return { success: false, error: data.error || '登录失败' };
+        return { success: false, error: data.error || t('auth.loginFailed') };
       }
     } catch (error) {
       console.error('登录请求失败:', error);
-      return { success: false, error: '网络错误，请稍后重试' };
+      return { success: false, error: t('common.networkError') };
     }
   };
 
@@ -83,11 +85,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.setItem(USER_KEY, JSON.stringify(data.user));
         return { success: true };
       } else {
-        return { success: false, error: data.error || '注册失败' };
+        return { success: false, error: data.error || t('auth.registerFailed') };
       }
     } catch (error) {
       console.error('注册请求失败:', error);
-      return { success: false, error: '网络错误，请稍后重试' };
+      return { success: false, error: t('common.networkError') };
     }
   };
 

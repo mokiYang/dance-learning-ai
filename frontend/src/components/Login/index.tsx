@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import './index.less';
 
@@ -7,6 +8,7 @@ interface LoginProps {
 }
 
 const Login: React.FC<LoginProps> = ({ onSuccess }) => {
+  const { t } = useTranslation();
   const { login, register } = useAuth();
   const [isLogin, setIsLogin] = useState(true); // true: 登录模式, false: 注册模式
   const [username, setUsername] = useState('');
@@ -21,17 +23,17 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
     // 验证输入
     if (!username.trim() || !password.trim()) {
-      setError('用户名和密码不能为空');
+      setError(t('auth.required'));
       return;
     }
 
     if (username.length < 3) {
-      setError('用户名长度至少3个字符');
+      setError(t('auth.usernameMin'));
       return;
     }
 
     if (password.length < 6) {
-      setError('密码长度至少6个字符');
+      setError(t('auth.passwordMin'));
       return;
     }
 
@@ -50,7 +52,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           onSuccess();
         }
       } else {
-        setError(result.error || '操作失败');
+        setError(result.error || t('auth.actionFailed'));
       }
     } finally {
       setLoading(false);
@@ -65,17 +67,17 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h2 className="login-title">{isLogin ? '登录' : '注册'}</h2>
+        <h2 className="login-title">{t(isLogin ? 'auth.login' : 'auth.register')}</h2>
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="username">用户名</label>
+            <label htmlFor="username">{t('auth.username')}</label>
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="请输入用户名（至少3个字符）"
+              placeholder={t('auth.enterUsername')}
               disabled={loading}
               autoComplete="username"
             />
@@ -83,13 +85,13 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
 
           {!isLogin && (
             <div className="form-group">
-              <label htmlFor="email">邮箱（可选）</label>
+              <label htmlFor="email">{t('auth.emailOptional')}</label>
               <input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="请输入邮箱"
+                placeholder={t('auth.enterEmail')}
                 disabled={loading}
                 autoComplete="email"
               />
@@ -97,13 +99,13 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           )}
 
           <div className="form-group">
-            <label htmlFor="password">密码</label>
+            <label htmlFor="password">{t('auth.password')}</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="请输入密码（至少6个字符）"
+              placeholder={t('auth.enterPassword')}
               disabled={loading}
               autoComplete={isLogin ? 'current-password' : 'new-password'}
             />
@@ -112,16 +114,16 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" className="btn-submit" disabled={loading}>
-            {loading ? '处理中...' : isLogin ? '登录' : '注册'}
+            {loading ? t('common.processing') : t(isLogin ? 'auth.login' : 'auth.register')}
           </button>
         </form>
 
         <div className="login-footer">
           <span className="toggle-text">
-            {isLogin ? '还没有账号？' : '已有账号？'}
+            {t(isLogin ? 'auth.noAccount' : 'auth.hasAccount')}
           </span>
           <button type="button" className="btn-toggle" onClick={toggleMode} disabled={loading}>
-            {isLogin ? '立即注册' : '立即登录'}
+            {t(isLogin ? 'auth.registerNow' : 'auth.loginNow')}
           </button>
         </div>
       </div>

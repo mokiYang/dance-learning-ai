@@ -11,6 +11,7 @@ export default defineConfig(async () => {
   return {
     plugins: [pluginReact(), pluginNodePolyfill(), pluginLess()],
     source: { entry },
+    html: { title: 'DANCEAURA' },
     server: {
       port: 3000,
       host: '0.0.0.0',

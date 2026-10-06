@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiService, ReferenceVideo } from "../../services/api";
 import VideoUpload, { VideoUploadRef } from "../VideoUpload";
 import VideoCard from "../VideoCard";
@@ -11,6 +12,7 @@ import "./index.less";
 type TabType = 'reference' | 'user';
 
 const VideoList: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -27,7 +29,7 @@ const VideoList: React.FC = () => {
   
   // 正在处理的视频任务
   const [processingTasks, setProcessingTasks] = useState<Map<string, { taskId: string; progress: number }>>(new Map());
-  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pollingIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
   // 使用ref来跟踪请求状态和缓存
   const requestRef = useRef<Promise<any> | null>(null);
@@ -66,7 +68,7 @@ const VideoList: React.FC = () => {
       pollingIntervalsRef.current.forEach(interval => clearInterval(interval));
       pollingIntervalsRef.current.clear();
     };
-  }, [activeTab]);
+  }, [activeTab, i18n.resolvedLanguage]);
 
   const fetchVideos = async (forceRefresh: boolean = false) => {
     // 如果强制刷新，清除缓存
@@ -113,10 +115,10 @@ const VideoList: React.FC = () => {
         };
         setVideos(response.videos);
       } else {
-        setError("获取视频列表失败");
+        setError(t('list.fetchFailed'));
       }
     } catch (err) {
-      setError("网络错误，请稍后重试");
+      setError(t('common.networkError'));
       console.error("获取视频列表失败:", err);
     } finally {
       setLoading(false);
@@ -134,10 +136,10 @@ const VideoList: React.FC = () => {
       if (response.success) {
         setUserVideos(response.videos || []);
       } else {
-        setError("获取用户视频列表失败");
+        setError(t('list.fetchUserFailed'));
       }
     } catch (err) {
-      setError("网络错误，请稍后重试");
+      setError(t('common.networkError'));
       console.error("获取用户视频列表失败:", err);
     } finally {
       setLoading(false);
@@ -175,7 +177,7 @@ const VideoList: React.FC = () => {
 
   // 管理员删除视频后刷新列表
   const handleVideoDeleted = () => {
-    showToast('视频已删除', 'success');
+    showToast(t('list.deleted'), 'success');
     if (activeTab === 'reference') {
       fetchVideos(true);
     } else {
@@ -194,7 +196,7 @@ const VideoList: React.FC = () => {
         const result = await apiService.getTaskStatus(taskId);
         
         if (!result.success) {
-          throw new Error('获取任务状态失败');
+          throw new Error(t('list.taskStatusFailed'));
         }
         
         const { task } = result;
@@ -241,7 +243,7 @@ const VideoList: React.FC = () => {
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="loading-spinner">加载中...</div>
+        <div className="loading-spinner">{t('common.loading')}</div>
       </div>
     );
   }
@@ -250,7 +252,7 @@ const VideoList: React.FC = () => {
     return (
       <div className="error-container">
         <div className="error-message">{error}</div>
-        <button onClick={() => window.location.reload()}>重试</button>
+        <button onClick={() => window.location.reload()}>{t('common.retry')}</button>
       </div>
     );
   }
@@ -270,8 +272,8 @@ const VideoList: React.FC = () => {
       <div className="video-tabs-wrapper">
         <Tabs
           items={[
-            { key: 'reference', label: '教学视频' },
-            { key: 'user', label: '用户视频' }
+            { key: 'reference', label: t('list.teachingVideos') },
+            { key: 'user', label: t('list.userVideos') }
           ]}
           activeKey={activeTab}
           onChange={(key) => handleTabChange(key as TabType)}
@@ -283,7 +285,7 @@ const VideoList: React.FC = () => {
         {activeTab === 'reference' ? (
           videos.length === 0 ? (
             <div className="empty-state">
-              <p>暂无视频，快来上传第一个吧！</p>
+              <p>{t('list.empty')}</p>
             </div>
           ) : (
             videos.map((video) => {
@@ -309,7 +311,7 @@ const VideoList: React.FC = () => {
         ) : (
           userVideos.length === 0 ? (
             <div className="empty-state">
-              <p>暂无用户视频</p>
+              <p>{t('list.emptyUser')}</p>
             </div>
           ) : (
             userVideos.map((video) => {

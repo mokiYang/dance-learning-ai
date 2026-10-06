@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './contexts/AuthContext';
 import VideoList from './components/VideoList';
 import BeginnerVideoList from './components/BeginnerVideoList';
@@ -16,6 +17,7 @@ import './App.less';
 
 // 对比页独立路由组件
 const VideoComparisonPage: React.FC = () => {
+  const { t } = useTranslation();
   const { workId } = useParams<{ workId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -23,8 +25,8 @@ const VideoComparisonPage: React.FC = () => {
   if (!workId) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
-        <p>工作ID不存在</p>
-        <button onClick={() => navigate('/')} className="btn btn-primary">返回首页</button>
+        <p>{t('app.workIdMissing')}</p>
+        <button onClick={() => navigate('/')} className="btn btn-primary">{t('app.returnHome')}</button>
       </div>
     );
   }

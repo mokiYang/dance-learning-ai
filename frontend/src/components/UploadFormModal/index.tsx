@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import "./index.less";
 
 export interface UploadFormModalProps {
@@ -18,13 +19,14 @@ const UploadFormModal: React.FC<UploadFormModalProps> = ({
   onClose,
   showOverlay = false,
 }) => {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   const content = (
     <div className="upload-form" onClick={(e) => e.stopPropagation()}>
       <div className="form-header">
         <h3>{title}</h3>
-        <button className="close-button" onClick={onClose}>
+        <button className="close-button" onClick={onClose} aria-label={t('common.close')}>
           ×
         </button>
       </div>
@@ -52,4 +54,3 @@ const UploadFormModal: React.FC<UploadFormModalProps> = ({
 };
 
 export default UploadFormModal;
-

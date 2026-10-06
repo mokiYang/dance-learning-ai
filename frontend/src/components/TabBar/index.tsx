@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './index.less';
 
@@ -7,6 +8,7 @@ interface TabBarProps {
 }
 
 const TabBar: React.FC<TabBarProps> = ({ onUploadClick }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -22,11 +24,11 @@ const TabBar: React.FC<TabBarProps> = ({ onUploadClick }) => {
         onClick={() => handleTabClick('/')}
       >
         <div className="tab-bar-icon">🏠</div>
-        <div className="tab-bar-label">首页</div>
+        <div className="tab-bar-label">{t('nav.home')}</div>
       </div>
 
       {/* 中间上传按钮 */}
-      <div className="tab-bar-upload" onClick={onUploadClick}>
+      <div className="tab-bar-upload" onClick={onUploadClick} role="button" aria-label={t('nav.upload')}>
         <div className="upload-button">
           <span className="upload-icon">+</span>
         </div>
@@ -38,7 +40,7 @@ const TabBar: React.FC<TabBarProps> = ({ onUploadClick }) => {
         onClick={() => handleTabClick('/profile')}
       >
         <div className="tab-bar-icon">👤</div>
-        <div className="tab-bar-label">个人页</div>
+        <div className="tab-bar-label">{t('nav.profile')}</div>
       </div>
     </div>
   );

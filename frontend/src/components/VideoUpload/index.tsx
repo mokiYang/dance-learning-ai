@@ -1,4 +1,5 @@
 import React, { useState, forwardRef, useImperativeHandle } from "react";
+import { useTranslation } from "react-i18next";
 import { apiService } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { showToast } from "../Toast/ToastContainer";
@@ -28,6 +29,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
   onUploadError,
   mode = 'home',
 }, ref) => {
+  const { t } = useTranslation();
   const { user, isAdmin } = useAuth(); // 获取当前登录用户
   const [uploading, setUploading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -49,7 +51,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
 
     // beginner 模式下二次校验：非 admin 不允许触发上传
     if (isBeginnerMode && !isAdmin) {
-      const errorMsg = "只有管理员可以上传新手入门教学视频";
+      const errorMsg = t('beginner.adminOnly');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       // 清空文件输入框
@@ -59,7 +61,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
 
     // 验证文件类型
     if (!file.type.startsWith("video/")) {
-      const errorMsg = "请选择有效的视频文件";
+      const errorMsg = t('upload.validVideo');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
@@ -68,7 +70,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
     // 验证文件大小 (限制为100MB)
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
-      const errorMsg = "文件大小不能超过100MB";
+      const errorMsg = t('upload.maxSize');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
       return;
@@ -85,7 +87,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
 
     try {
       // 使用当前登录用户的用户名作为作者
-      const authorName = user?.username || author || "匿名用户";
+      const authorName = user?.username || author || t('upload.anonymous');
       
       let response;
       
@@ -119,7 +121,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
         // 获取task_id和video_id
         const taskId = response.task_id;
         const videoId = response.video_id;
-        const filename = response.filename || selectedFile?.name || '视频';
+        const filename = response.filename || selectedFile?.name || t('upload.video');
         
         // 先关闭表单，再显示 Toast（确保 Toast 不被表单遮挡）
         setSelectedFile(null);
@@ -131,25 +133,25 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
         
         // 延迟一下显示 Toast，确保表单已关闭
         setTimeout(() => {
-          const videoType = isBeginnerMode
-            ? "新手入门教学视频"
-            : (isTeachingVideo ? "教学视频" : "用户视频");
+          const videoType = t(isBeginnerMode
+            ? 'upload.beginnerType'
+            : (isTeachingVideo ? 'upload.teachingType' : 'upload.userType'));
           if (taskId) {
             // 有异步任务，显示全局成功提示
             showToast(
-              `${videoType} "${filename}" 上传成功！`,
+              t('upload.success', { type: videoType, filename }),
               "success",
               3000
             );
           } else {
             // 没有task_id，使用旧的同步模式
-            showToast(`${videoType} "${filename}" 上传成功！`, "success", 2000);
+            showToast(t('upload.success', { type: videoType, filename }), "success", 2000);
           }
         }, 100);
         
         onUploadSuccess?.(taskId, videoId);
       } else {
-        const errorMsg = (response as any).error || response.message || "上传失败，请重试";
+        const errorMsg = (response as any).error || response.message || t('common.uploadFailed');
         // 先关闭表单，再显示错误 Toast
         setShowForm(false);
         setTimeout(() => {
@@ -159,7 +161,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
       }
     } catch (err) {
       console.error("上传失败:", err);
-      const errorMsg = "上传失败，请检查网络连接";
+      const errorMsg = t('common.uploadNetworkFailed');
       showToast(errorMsg, "error");
       onUploadError?.(errorMsg);
     } finally {
@@ -173,7 +175,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
   const handleFileUploadClick = () => {
     // beginner 模式下非 admin 直接拒绝触发，避免选了文件再报错
     if (isBeginnerMode && !isAdmin) {
-      showToast("只有管理员可以上传新手入门教学视频", "error");
+      showToast(t('beginner.adminOnly'), "error");
       return;
     }
     // 触发文件选择
@@ -212,43 +214,43 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
       {/* 上传表单弹窗 */}
       <UploadFormModal
         visible={showForm}
-        title={isBeginnerMode ? "上传新手入门教学视频" : "上传视频信息"}
+        title={t(isBeginnerMode ? 'upload.beginnerTitle' : 'upload.infoTitle')}
         fileName={selectedFile?.name}
         onClose={handleCancel}
       >
         <div className="form-group">
-          <label htmlFor="title">视频标题 *</label>
+          <label htmlFor="title">{t('common.videoTitle')}</label>
           <input
             id="title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="请输入视频标题"
+            placeholder={t('common.enterVideoTitle')}
             required
           />
         </div>
         
         <div className="form-group">
-          <label htmlFor="description">视频描述</label>
+          <label htmlFor="description">{t('upload.description')}</label>
           <textarea
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="请输入视频描述（可选）"
+            placeholder={t('upload.descriptionPlaceholder')}
             rows={3}
           />
         </div>
         
         <div className="form-group">
-          <label className="video-type-label">视频类型 *</label>
+          <label className="video-type-label">{t('upload.type')}</label>
           <div className="video-type-selector">
             {isBeginnerMode ? (
               // 新手入门模式：只展示一种固定类型，作为提示而不是选择器
               <div className="video-type-option active">
                 <div className="option-icon">🌟</div>
                 <div className="option-content">
-                  <div className="option-title">新手入门教学视频</div>
-                  <div className="option-desc">将进行骨骼提取，作为新用户录制同款的基础动作示范</div>
+                  <div className="option-title">{t('upload.beginnerType')}</div>
+                  <div className="option-desc">{t('upload.beginnerDescription')}</div>
                 </div>
                 <div className="option-check">✓</div>
               </div>
@@ -260,8 +262,8 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
                 >
                   <div className="option-icon">📚</div>
                   <div className="option-content">
-                    <div className="option-title">教学视频</div>
-                    <div className="option-desc">将进行骨骼提取，可用于姿势对比</div>
+                    <div className="option-title">{t('upload.teachingType')}</div>
+                    <div className="option-desc">{t('upload.teachingDescription')}</div>
                   </div>
                   {isTeachingVideo && <div className="option-check">✓</div>}
                 </div>
@@ -271,8 +273,8 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
                 >
                   <div className="option-icon">👤</div>
                   <div className="option-content">
-                    <div className="option-title">用户视频</div>
-                    <div className="option-desc">直接上传，不进行骨骼提取</div>
+                    <div className="option-title">{t('upload.userType')}</div>
+                    <div className="option-desc">{t('upload.userDescription')}</div>
                   </div>
                   {!isTeachingVideo && <div className="option-check">✓</div>}
                 </div>
@@ -287,7 +289,7 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
             onClick={handleCancel}
             disabled={uploading}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="submit-button"
@@ -297,12 +299,12 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
             {uploading ? (
               <>
                 <span className="upload-icon">⏳</span>
-                上传中...
+                {t('common.uploading')}
               </>
             ) : (
               <>
                 <span className="upload-icon">📤</span>
-                确认上传
+                {t('common.confirmUpload')}
               </>
             )}
           </button>
@@ -313,4 +315,3 @@ const VideoUpload = forwardRef<VideoUploadRef, VideoUploadProps>(({
 });
 
 export default VideoUpload;
-

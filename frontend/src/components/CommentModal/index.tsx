@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
 import { showToast } from '../Toast/ToastContainer';
@@ -27,6 +28,7 @@ const CommentModal: React.FC<CommentModalProps> = ({
   onClose,
   onCommentSubmit,
 }) => {
+  const { t, i18n } = useTranslation();
   const { isAuthenticated, user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +68,11 @@ const CommentModal: React.FC<CommentModalProps> = ({
           onCommentSubmit();
         }
       } else {
-        showToast(response.error || '评论失败，请重试', 'error');
+        showToast(response.error || t('comments.failed'), 'error');
       }
     } catch (error: any) {
       console.error('提交评论失败:', error);
-      showToast(error?.message || '评论失败，请检查网络连接', 'error');
+      showToast(error?.message || t('comments.networkFailed'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -86,7 +88,7 @@ const CommentModal: React.FC<CommentModalProps> = ({
     <div className="comment-modal-backdrop" onClick={handleBackdropClick}>
       <div className="comment-modal" onClick={(e) => e.stopPropagation()}>
         <div className="comment-modal-header">
-          <h3>评论 ({comments.length})</h3>
+          <h3>{t('comments.title', { count: comments.length })}</h3>
           <button className="close-button" onClick={onClose}>
             ×
           </button>
@@ -94,9 +96,9 @@ const CommentModal: React.FC<CommentModalProps> = ({
 
         <div className="comment-modal-content">
           {loading ? (
-            <div className="loading">加载中...</div>
+            <div className="loading">{t('common.loading')}</div>
           ) : comments.length === 0 ? (
-            <div className="empty-comments">暂无评论，快来发表第一条吧！</div>
+            <div className="empty-comments">{t('comments.empty')}</div>
           ) : (
             <div className="comments-list">
               {comments.map((comment) => (
@@ -104,7 +106,7 @@ const CommentModal: React.FC<CommentModalProps> = ({
                   <div className="comment-header">
                     <span className="comment-username">{comment.username}</span>
                     <span className="comment-time">
-                      {new Date(comment.created_at).toLocaleString()}
+                      {new Date(comment.created_at).toLocaleString(i18n.resolvedLanguage)}
                     </span>
                   </div>
                   <div className="comment-content">{comment.content}</div>
@@ -118,7 +120,7 @@ const CommentModal: React.FC<CommentModalProps> = ({
           <div className="comment-input-section">
             <textarea
               className="comment-textarea"
-              placeholder="写下你的评论..."
+              placeholder={t('comments.placeholder')}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               rows={3}
@@ -128,12 +130,12 @@ const CommentModal: React.FC<CommentModalProps> = ({
               onClick={handleSubmit}
               disabled={!commentText.trim() || submitting}
             >
-              {submitting ? '提交中...' : '发表评论'}
+              {t(submitting ? 'comments.submitting' : 'comments.publish')}
             </button>
           </div>
         ) : (
           <div className="comment-login-prompt">
-            请先登录后再发表评论
+            {t('comments.loginPrompt')}
           </div>
         )}
       </div>
@@ -142,4 +144,3 @@ const CommentModal: React.FC<CommentModalProps> = ({
 };
 
 export default CommentModal;
-
