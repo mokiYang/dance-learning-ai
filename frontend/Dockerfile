@@ -7,8 +7,8 @@ WORKDIR /app
 # 复制 package.json 和 pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 固定 pnpm 版本，确保生产镜像构建行为可复现
+RUN npm install -g pnpm@9.15.9
 
 # 安装依赖
 RUN pnpm install --frozen-lockfile
